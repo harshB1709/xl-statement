@@ -510,6 +510,7 @@ class Converter extends Component
                 'reconciliation' => 0,
                 'warnings' => [],
                 'transaction_count' => 0,
+                'text_engine' => $table->textEngine,
                 'raw_table' => [
                     'layoutFingerprint' => $table->layoutFingerprint,
                     'headerCells' => $table->headerCells,
@@ -526,6 +527,7 @@ class Converter extends Component
                     'bankName' => $table->bankName,
                     'rawPreamble' => $table->rawPreamble,
                     'displayName' => $this->files[$index]['name'],
+                    'textEngine' => $table->textEngine,
                 ],
             ];
         }
@@ -536,7 +538,7 @@ class Converter extends Component
         $this->files[$index]['status'] = $profile ? 'mapped' : 'table_found';
         $this->files[$index]['message'] = $profile
             ? 'Mapped using "'.$profile->name.'"'
-            : count($table->rows).' rows · needs mapping';
+            : count($table->rows).' rows · '.$table->textEngine.' · needs mapping';
 
         if ($this->activeFingerprint === '') {
             $this->activeFingerprint = $table->layoutFingerprint;
@@ -575,6 +577,7 @@ class Converter extends Component
             bankName: $raw['bankName'],
             rawPreamble: $raw['rawPreamble'],
             displayName: $raw['displayName'] ?? null,
+            textEngine: $raw['textEngine'] ?? 'unknown',
         );
 
         $mapping = $this->mappingFromLayout($this->layouts[$fingerprint]);

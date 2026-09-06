@@ -10,6 +10,7 @@ readonly class ExtractedText
     public function __construct(
         public array $pages,
         public string $sourceFile,
+        public string $engine = 'unknown',
     ) {}
 
     public function fullText(): string

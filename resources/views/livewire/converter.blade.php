@@ -184,6 +184,7 @@
                         <div class="rounded-xl bg-surface-2 p-3 text-sm text-ink">
                             <p><span class="font-medium">{{ $layout['transaction_count'] }}</span> transactions</p>
                             <p class="mt-1 text-muted">Balance reconciles on <span class="font-medium text-ink">{{ $layout['reconciliation'] }}%</span></p>
+                            <p class="mt-1 text-muted">Extracted with <span class="font-medium text-ink">{{ $layout['text_engine'] ?? 'unknown' }}</span></p>
                         </div>
                         @if ($layout['warnings'] !== [])
                             <div class="max-h-40 overflow-auto rounded-xl bg-warn-soft p-3 text-xs text-warn ring-1 ring-warn-line">

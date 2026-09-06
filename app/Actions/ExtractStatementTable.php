@@ -130,6 +130,7 @@ class ExtractStatementTable
                 sourceFile: $extracted->sourceFile,
                 bankName: $bankName,
                 rawPreamble: implode("\n", $preamble),
+                textEngine: $extracted->engine,
             );
         }
 
@@ -142,6 +143,7 @@ class ExtractStatementTable
             sourceFile: $extracted->sourceFile,
             bankName: $bankName,
             rawPreamble: implode("\n", $preamble),
+            textEngine: $extracted->engine,
         );
     }
 

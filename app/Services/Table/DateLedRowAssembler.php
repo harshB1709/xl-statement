@@ -17,7 +17,7 @@ class DateLedRowAssembler
     /**
      * @param  list<string>  $pages
      */
-    public function assemble(array $pages, string $sourceFile, ?string $bankName = null, string $rawPreamble = ''): RawTable
+    public function assemble(array $pages, string $sourceFile, ?string $bankName = null, string $rawPreamble = '', string $textEngine = 'unknown'): RawTable
     {
         $lines = [];
         $pageOf = [];
@@ -148,6 +148,7 @@ class DateLedRowAssembler
             sourceFile: $sourceFile,
             bankName: $bankName,
             rawPreamble: $rawPreamble,
+            textEngine: $textEngine,
         );
     }
 

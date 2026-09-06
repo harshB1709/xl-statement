@@ -51,7 +51,7 @@ class PopplerTextExtractor implements PdfTextExtractor
         $pages = preg_split("/\f/", $output) ?: [$output];
         $pages = array_values(array_map(static fn (string $page): string => rtrim($page, "\r\n"), $pages));
 
-        $extracted = new ExtractedText($pages, $path);
+        $extracted = new ExtractedText($pages, $path, 'poppler');
 
         if ($extracted->nonWhitespaceLength() < 40) {
             throw new PdfHasNoTextLayer($path);
@@ -87,12 +87,10 @@ class PopplerTextExtractor implements PdfTextExtractor
             return $configured;
         }
 
-        $platform = PHP_OS_FAMILY === 'Windows' ? 'win' : (PHP_OS_FAMILY === 'Darwin' ? 'mac' : 'linux');
-        $binaryName = PHP_OS_FAMILY === 'Windows' ? 'pdftotext.exe' : 'pdftotext';
-        $bundled = base_path('extras/'.$platform.'/'.$binaryName);
-
-        if (is_file($bundled)) {
-            return $bundled;
+        foreach ($this->candidateBinaryPaths() as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
         }
 
         $which = $this->process()->run(['which', 'pdftotext']);
@@ -102,6 +100,31 @@ class PopplerTextExtractor implements PdfTextExtractor
         }
 
         throw new RuntimeException('pdftotext binary not found. Install poppler or place it under extras/.');
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function candidateBinaryPaths(): array
+    {
+        $platform = PHP_OS_FAMILY === 'Windows' ? 'win' : (PHP_OS_FAMILY === 'Darwin' ? 'mac' : 'linux');
+        $binaryName = PHP_OS_FAMILY === 'Windows' ? 'pdftotext.exe' : 'pdftotext';
+
+        $candidates = [
+            base_path('extras/'.$platform.'/'.$binaryName),
+        ];
+
+        if (PHP_OS_FAMILY === 'Darwin') {
+            $candidates[] = '/opt/homebrew/bin/pdftotext';
+            $candidates[] = '/usr/local/bin/pdftotext';
+        }
+
+        if (PHP_OS_FAMILY === 'Linux') {
+            $candidates[] = '/usr/bin/pdftotext';
+            $candidates[] = '/usr/local/bin/pdftotext';
+        }
+
+        return $candidates;
     }
 
     private function process(): PendingProcess

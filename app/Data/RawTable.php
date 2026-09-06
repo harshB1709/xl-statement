@@ -20,6 +20,7 @@ readonly class RawTable
         public ?string $bankName = null,
         public string $rawPreamble = '',
         public ?string $displayName = null,
+        public string $textEngine = 'unknown',
     ) {}
 
     public function withDisplayName(string $displayName): self
@@ -34,6 +35,7 @@ readonly class RawTable
             bankName: $this->bankName,
             rawPreamble: $this->rawPreamble,
             displayName: $displayName,
+            textEngine: $this->textEngine,
         );
     }
 

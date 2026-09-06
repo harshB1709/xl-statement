@@ -50,7 +50,7 @@ class PapierPdfTextExtractor implements PdfTextExtractor
             throw new PdfExtractionFailed($exception->getMessage(), $path, previous: $exception);
         }
 
-        $extracted = new ExtractedText($pages, $path);
+        $extracted = new ExtractedText($pages, $path, 'papier');
 
         if ($extracted->nonWhitespaceLength() < 40) {
             throw new PdfHasNoTextLayer($path);

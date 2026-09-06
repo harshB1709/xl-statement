@@ -2,9 +2,9 @@
 
 return [
     /*
-    | Pure PHP (smalot) is the default so Mac Herd and Windows NativePHP
-    | share one extractor with no OS-specific binaries required.
-    | Poppler is used only when available, mainly for password PDFs.
+    | Path to Poppler's pdftotext binary. When null, the app checks extras/,
+    | then common Homebrew/system paths, then `which pdftotext`.
+    | Herd's PHP-FPM often lacks Homebrew on PATH, so absolute paths matter.
     */
     'pdftotext_path' => env('PDFTOTEXT_PATH'),
 ];
