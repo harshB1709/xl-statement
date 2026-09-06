@@ -1,0 +1,9 @@
+Date       Narration                         Chq/Ref No        Withdrawal      Deposit       Balance
+01/04/2025 UPI/merchant@okaxis/1234567890                              1,500.00                        8,500.00
+02/04/2025 NEFT CR-ACME PVT LTD-SALARY                                              25,000.00         33,500.00
+03/04/2025 ATM WDL-MUMBAI                    004512                    2,000.00                       31,500.00
+03/04/2025 POS Purchase Coffee
+           Shop Andheri                                                  350.00                       31,150.00
+04/04/2025 IMPS/P2A/9876543210/RENT                                   12,000.00                       19,150.00
+Page 1 of 1
+This is a computer generated statement

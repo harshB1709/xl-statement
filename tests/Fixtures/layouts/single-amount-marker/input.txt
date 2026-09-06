@@ -1,0 +1,4 @@
+Txn Date   Particulars                      Amount     Dr/Cr   Balance     
+01-04-2025 UPI/food@paytm                   450.00     Dr      9,550.00    
+02-04-2025 SALARY CREDIT                    50,000.00  Cr      59,550.00   
+03-04-2025 EMI AUTO DEBIT                   8,200.00   Dr      51,350.00   

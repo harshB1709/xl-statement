@@ -1,0 +1,146 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+@source '../../app/Livewire/**/*.php';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Themes
+ * Light — Ledger Mist: cool mint paper, forest ink, teal accent
+ * Dark  — Graphite Reef: blue-charcoal, ivory type, brighter teal
+ */
+:root {
+    --canvas: #eef3f1;
+    --canvas-accent: #dce8e3;
+    --surface: #ffffff;
+    --surface-2: #f5f9f7;
+    --ink: #14201c;
+    --muted: #5a6b65;
+    --line: #c9d8d2;
+    --line-strong: #a8beb5;
+    --accent: #0f6f66;
+    --accent-hover: #0d9488;
+    --accent-fg: #f0fdfa;
+    --accent-soft: #d0f0ea;
+    --ok: #166534;
+    --ok-soft: #dcfce7;
+    --ok-line: #86efac;
+    --warn: #92400e;
+    --warn-soft: #ffedd5;
+    --warn-line: #fdba74;
+    --danger: #9f1239;
+    --danger-soft: #ffe4e6;
+    --danger-line: #fda4af;
+    --focus: #0f6f66;
+}
+
+.dark {
+    --canvas: #10151a;
+    --canvas-accent: #172028;
+    --surface: #1a222b;
+    --surface-2: #141b22;
+    --ink: #e8eef2;
+    --muted: #93a4b0;
+    --line: #2a3540;
+    --line-strong: #3d4d5c;
+    --accent: #2dd4bf;
+    --accent-hover: #5eead4;
+    --accent-fg: #042f2e;
+    --accent-soft: #134e4a;
+    --ok: #86efac;
+    --ok-soft: #14532d;
+    --ok-line: #166534;
+    --warn: #fcd34d;
+    --warn-soft: #78350f;
+    --warn-line: #b45309;
+    --danger: #fda4af;
+    --danger-soft: #881337;
+    --danger-line: #9f1239;
+    --focus: #2dd4bf;
+}
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+    --color-canvas: var(--canvas);
+    --color-canvas-accent: var(--canvas-accent);
+    --color-surface: var(--surface);
+    --color-surface-2: var(--surface-2);
+    --color-ink: var(--ink);
+    --color-muted: var(--muted);
+    --color-line: var(--line);
+    --color-line-strong: var(--line-strong);
+    --color-accent: var(--accent);
+    --color-accent-hover: var(--accent-hover);
+    --color-accent-fg: var(--accent-fg);
+    --color-accent-soft: var(--accent-soft);
+    --color-ok: var(--ok);
+    --color-ok-soft: var(--ok-soft);
+    --color-ok-line: var(--ok-line);
+    --color-warn: var(--warn);
+    --color-warn-soft: var(--warn-soft);
+    --color-warn-line: var(--warn-line);
+    --color-danger: var(--danger);
+    --color-danger-soft: var(--danger-soft);
+    --color-danger-line: var(--danger-line);
+}
+
+@layer base {
+    html {
+        color-scheme: light;
+    }
+
+    html.dark {
+        color-scheme: dark;
+    }
+
+    body {
+        background-color: var(--canvas);
+        background-image:
+            radial-gradient(ellipse 90% 55% at 0% -10%, color-mix(in oklab, var(--canvas-accent) 85%, transparent), transparent 55%),
+            radial-gradient(ellipse 70% 45% at 100% 0%, color-mix(in oklab, var(--accent-soft) 55%, transparent), transparent 50%);
+        color: var(--ink);
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+    }
+}
+
+@layer components {
+    .btn-primary {
+        @apply inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-fg transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40;
+    }
+
+    .btn-secondary {
+        @apply inline-flex items-center justify-center rounded-xl bg-surface px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line transition hover:bg-surface-2;
+    }
+
+    .btn-ghost {
+        @apply text-sm text-muted transition hover:text-ink;
+    }
+
+    .panel {
+        @apply rounded-2xl bg-surface ring-1 ring-line;
+    }
+
+    .field {
+        @apply rounded-xl border-line bg-surface-2 px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:ring-accent;
+    }
+
+    .chip {
+        @apply rounded-full px-3 py-1.5 text-sm font-medium transition;
+    }
+
+    .chip-active {
+        @apply bg-accent text-accent-fg;
+    }
+
+    .chip-idle {
+        @apply bg-surface text-muted ring-1 ring-line hover:text-ink;
+    }
+}
