@@ -4,6 +4,8 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>{{ $title ?? 'XL Statement' }}</title>
+        <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
+        <link rel="apple-touch-icon" href="{{ asset('icon.png') }}">
         <script>
             (function () {
                 try {
@@ -19,10 +21,19 @@
     <body class="min-h-screen font-sans text-ink antialiased">
         <div class="mx-auto max-w-6xl px-4 py-8">
             <header class="mb-8 flex items-start justify-between gap-4">
-                <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Private · offline</p>
-                    <h1 class="mt-1 text-4xl font-semibold tracking-tight text-ink">XL Statement</h1>
-                    <p class="mt-2 max-w-md text-sm text-muted">PDF bank statements → clean Excel workbooks, on this machine.</p>
+                <div class="flex items-start gap-3">
+                    <img
+                        src="{{ asset('favicon.svg') }}"
+                        alt=""
+                        width="48"
+                        height="48"
+                        class="mt-1 size-12 shrink-0 rounded-[14px] shadow-sm ring-1 ring-line"
+                    >
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Private · offline</p>
+                        <h1 class="mt-1 text-4xl font-semibold tracking-tight text-ink">XL Statement</h1>
+                        <p class="mt-2 max-w-md text-sm text-muted">PDF bank statements → clean Excel workbooks, on this machine.</p>
+                    </div>
                 </div>
 
                 <button

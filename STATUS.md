@@ -3,7 +3,7 @@
 Living handoff so you (or another agent) can switch tabs without losing context.  
 **Spec / original plan:** [`PLAN.md`](PLAN.md)  
 **App (Herd):** http://xl-statement.test  
-**Git:** `main` @ `4c22118` (2 commits; no remote required yet)
+**Git:** `main` (no remote yet — push or zip for Windows clone)
 
 Last updated: 2026-09-08 (Poppler win extras)
 
@@ -51,8 +51,14 @@ Brew: `brew install poppler` → binary at `/opt/homebrew/bin/pdftotext`
 - `extras/win/` now has **`pdftotext.exe` + PE import-closure DLLs** from [oschwartz10612/poppler-windows](https://github.com/oschwartz10612/poppler-windows) **v26.07.0-0** (~55MB). Other Poppler CLIs omitted. See `extras/win/SOURCE.txt`.
 - **Git LFS:** `extras/win/*.exe` and `extras/win/*.dll` (requires `git lfs install`). License/SOURCE text files are normal git.
 - GPL texts: `LICENSE-poppler.txt` (+ poppler-data / Adobe COPYING files).
-- Still VERIFY on a clean Win VM: NativePHP `extras` path + `Process` can run `extras/win/pdftotext.exe` (paths with spaces, UTF-8, `-upw`).
 - `extras/mac/` still only `.gitkeep` (dev uses Homebrew / `PDFTOTEXT_PATH`).
+
+#### NativePHP 2.3.0 build notes (2026-09-08)
+
+- **`pdfPageSize.js` missing** in `nativephp/desktop` 2.3.0 → electron-vite fails. Upstream: [#152](https://github.com/NativePHP/desktop/issues/152) / [#153](https://github.com/NativePHP/desktop/pull/153). Workaround: `patches/nativephp-pdfPageSize.js` restored by Composer `post-autoload-dump` when absent.
+- **“renderer and preload config is missing”** is a harmless electron-vite warning (Laravel UI is not a Vite renderer).
+- Mac → `native:build win`: electron-vite succeeds; `win-unpacked/` packs **`extras/win/pdftotext.exe`**. Final NSIS/icon step fails on Apple Silicon with electron-builder’s Intel Wine (`bad CPU type`). Prefer building the installer on Windows, or install ARM Wine later.
+- Still VERIFY on a clean Win machine: open `win-unpacked` / installer and run convert (spaces, UTF-8, `-upw`).
 
 ---
 
@@ -114,12 +120,13 @@ Artisan spike (older): `php artisan statements:spike-papier` — compare Papier 
 
 ## Still open / next
 
-1. VERIFY NativePHP extras path + `Process` with bundled `extras/win/pdftotext.exe` on a clean Win VM (spaces in path, UTF-8, `-upw`).
-2. Real-PDF smoke suite for regression (optional CI skip when fixtures absent).
-3. Locked CBI vs Poppler password compare (needs password only in local env — never commit).
-4. Prefer stricter bank-agnostic shapes; strip growing bank-specific noise if it creeps in.
-5. NativePHP build/sign/ship (PLAN M4).
-6. `.ai/rules` still thin / missing — record durable decisions with Boost `record-rule` when useful.
+1. Finish Windows package on a **Windows** box (or ARM Wine): `php artisan native:build win`, then VERIFY convert with bundled `extras/win/pdftotext.exe` (spaces, UTF-8, `-upw`). Mac can produce `win-unpacked` past vite, but installer/rcedit needs working Wine/Windows.
+2. Drop `patches/nativephp-pdfPageSize.js` once `nativephp/desktop` ships the #153 fix.
+3. Real-PDF smoke suite for regression (optional CI skip when fixtures absent).
+4. Locked CBI vs Poppler password compare (needs password only in local env — never commit).
+5. Prefer stricter bank-agnostic shapes; strip growing bank-specific noise if it creeps in.
+6. NativePHP build/sign/ship (PLAN M4).
+7. `.ai/rules` still thin / missing — record durable decisions with Boost `record-rule` when useful.
 
 ---
 
@@ -158,3 +165,4 @@ php -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->m
 - Prefer Boost MCP tools when available (`search-docs`, `database-schema`, `get-absolute-url`, `record-rule`).
 - Never commit `tests/Fixtures/real/*.pdf` or secrets.
 - If UI shows `#TRANSACTION` / 4 junk rows on kotak-2 → **smalot**, not Poppler — check engine label and binary resolution.
+- App mark: `resources/images/logo.svg` + `public/favicon.svg`; NativePHP OS icons: `public/icon.png` / `.ico` / `.icns` (teal XL + grid). Workspace: `tmp/custom-icons/xl-statement-mark/`.

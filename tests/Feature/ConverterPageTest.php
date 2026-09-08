@@ -6,7 +6,9 @@ use Livewire\Livewire;
 it('renders the converter home page', function () {
     $this->get(route('home'))
         ->assertOk()
-        ->assertSeeLivewire(Converter::class);
+        ->assertSeeLivewire(Converter::class)
+        ->assertSee('favicon.svg', false)
+        ->assertSee('XL Statement', false);
 });
 
 it('starts on the files step', function () {
