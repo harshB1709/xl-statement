@@ -1,58 +1,98 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# XL Statement
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Convert **PDF bank statements → Excel**. Bank-agnostic table extraction with a short column-mapping step — not a pile of per-bank parsers.
 
-## About Laravel
+**Flow:** Files → Map columns → Export
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Dev: Laravel Herd (Mac). Ship target: **Windows NativePHP desktop**.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+---
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Stack
 
-## Learning Laravel
+| Area | Choice |
+|------|--------|
+| App | Laravel 13 · Livewire 4 · Blade · Tailwind v4 |
+| PDF text | Poppler `pdftotext -layout` first → smalot (unlocked) → Papier (password) |
+| Excel | Hand-rolled XLSX (`ZipArchive` + XML) |
+| DB | SQLite |
+| Desktop | [`nativephp/desktop`](https://nativephp.com) |
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+The map UI shows `Extracted with poppler|smalot|papier` so you can confirm which engine ran.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+## Requirements
 
-## Agentic Development
+- PHP 8.4+, Composer, Node 20.19+ (or 22+)
+- [Laravel Herd](https://herd.laravel.com) (or equivalent) for local web
+- **Mac PDF quality:** [Poppler](https://poppler.freedesktop.org/) via Homebrew (`brew install poppler`)
+- **Windows desktop build:** Git LFS (Poppler binaries under `extras/win/`), PHP 8.4, Node 22
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+---
+
+## Local setup (Mac / Herd)
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+git clone https://github.com/harshB1709/xl-statement.git
+cd xl-statement
+git lfs install && git lfs pull   # Windows Poppler binaries
+composer install
+cp .env.example .env
+php artisan key:generate
+touch database/database.sqlite
+php artisan migrate
+npm install && npm run build
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Point Herd at the project (or use `http://xl-statement.test`).
 
-## Contributing
+Optional — force Poppler when Herd’s PHP-FPM lacks Homebrew on `PATH`:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```env
+PDFTOTEXT_PATH=/opt/homebrew/bin/pdftotext
+```
 
-## Code of Conduct
+```bash
+composer run test
+# or: php artisan test --compact
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+---
 
-## Security Vulnerabilities
+## Windows NativePHP build
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Build the installer **on Windows** (Apple Silicon → Win via Wine often fails at rcedit/NSIS).
+
+```powershell
+git lfs install
+git pull
+composer install
+composer dump-autoload          # restores pdfPageSize.js patch + syncs app icons
+npm install
+# Use PHP 8.4 on PATH (not XAMPP 7.x), Node 22 via nvm-windows
+php artisan native:build win
+```
+
+Installer / unpacked app land under `nativephp/electron/dist/`.
+
+**After install, convert a statement** — the UI should say **Extracted with poppler**. If it says smalot, the packaged extras path isn’t resolving (see [`STATUS.md`](STATUS.md)).
+
+Reinstall after icon changes; Windows caches shortcut icons.
+
+---
+
+## Project notes
+
+- **Handoff / agent context:** [`STATUS.md`](STATUS.md) · original plan: [`PLAN.md`](PLAN.md)
+- **Real PDF fixtures:** `tests/Fixtures/real/` (gitignored) — do not commit statements or passwords
+- **Bundled Poppler (Windows):** `extras/win/` from [oschwartz10612/poppler-windows](https://github.com/oschwartz10612/poppler-windows) v26.07.0-0 — GPL; see `extras/win/LICENSE-poppler.txt` and `SOURCE.txt`
+- **App icons:** `public/icon.png` / `.ico` / `.icns` (teal XL + grid). Synced into NativePHP build trees by `bin/sync-nativephp-icons.php`
+
+---
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Application code: [MIT](LICENSE).
+
+Bundled Poppler binaries are GPL-2.0; distributing the Windows desktop build inherits that obligation for those binaries.

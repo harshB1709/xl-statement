@@ -5,7 +5,7 @@ Living handoff so you (or another agent) can switch tabs without losing context.
 **App (Herd):** http://xl-statement.test  
 **Git:** `main` → https://github.com/harshB1709/xl-statement.git
 
-Last updated: 2026-09-08 (Poppler win extras)
+Last updated: 2026-09-09 (packaged Poppler path + icons)
 
 ---
 
@@ -165,4 +165,6 @@ php -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->m
 - Prefer Boost MCP tools when available (`search-docs`, `database-schema`, `get-absolute-url`, `record-rule`).
 - Never commit `tests/Fixtures/real/*.pdf` or secrets.
 - If UI shows `#TRANSACTION` / 4 junk rows on kotak-2 → **smalot**, not Poppler — check engine label and binary resolution.
+- **Packaged Windows:** Poppler is next to the exe via `extraFiles` → `NATIVEPHP_EXTRAS_PATH` (`resources/../extras`), **not** under Laravel `base_path('extras')`. `PopplerTextExtractor` must resolve that env (or Storage disk `extras`) or the UI silently uses smalot.
 - App mark: `resources/images/logo.svg` + `public/favicon.svg`; NativePHP OS icons: `public/icon.png` / `.ico` / `.icns` (teal XL + grid). Workspace: `tmp/custom-icons/xl-statement-mark/`.
+- **Icons in desktop build:** `bin/sync-nativephp-icons.php` (composer `post-autoload-dump`) copies icons into vendor + published `nativephp/electron/build`. Upstream `electronPath('build/icon.*')` can miss a published Electron project and leave the default NativePHP “N”. After pull: `composer dump-autoload` (or `php bin/sync-nativephp-icons.php`) then rebuild; reinstall the `.exe` (Windows caches shortcut icons).

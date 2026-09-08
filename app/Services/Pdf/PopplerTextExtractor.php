@@ -7,7 +7,9 @@ use App\Exceptions\PdfHasNoTextLayer;
 use App\Exceptions\PdfPasswordRequired;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Throwable;
 
 class PopplerTextExtractor implements PdfTextExtractor
 {
@@ -32,7 +34,9 @@ class PopplerTextExtractor implements PdfTextExtractor
         $command[] = $path;
         $command[] = '-';
 
-        $result = $this->process()->run($command);
+        $result = $this->process()
+            ->path(dirname($binary))
+            ->run($command);
 
         if ($result->failed()) {
             $error = strtolower($result->errorOutput().$result->output());
@@ -93,10 +97,10 @@ class PopplerTextExtractor implements PdfTextExtractor
             }
         }
 
-        $which = $this->process()->run(['which', 'pdftotext']);
+        $resolved = $this->resolveFromPathLookup();
 
-        if ($which->successful() && trim($which->output()) !== '') {
-            return trim($which->output());
+        if ($resolved !== null) {
+            return $resolved;
         }
 
         throw new RuntimeException('pdftotext binary not found. Install poppler or place it under extras/.');
@@ -109,10 +113,25 @@ class PopplerTextExtractor implements PdfTextExtractor
     {
         $platform = PHP_OS_FAMILY === 'Windows' ? 'win' : (PHP_OS_FAMILY === 'Darwin' ? 'mac' : 'linux');
         $binaryName = PHP_OS_FAMILY === 'Windows' ? 'pdftotext.exe' : 'pdftotext';
+        $relative = $platform.DIRECTORY_SEPARATOR.$binaryName;
 
-        $candidates = [
-            base_path('extras/'.$platform.'/'.$binaryName),
-        ];
+        $candidates = [];
+
+        $extrasEnv = env('NATIVEPHP_EXTRAS_PATH');
+
+        if (is_string($extrasEnv) && $extrasEnv !== '') {
+            $candidates[] = rtrim($extrasEnv, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$relative;
+        }
+
+        try {
+            if (config('filesystems.disks.extras.root')) {
+                $candidates[] = Storage::disk('extras')->path($platform.'/'.$binaryName);
+            }
+        } catch (Throwable) {
+            // Disk may be unconfigured outside NativePHP.
+        }
+
+        $candidates[] = base_path('extras'.DIRECTORY_SEPARATOR.$relative);
 
         if (PHP_OS_FAMILY === 'Darwin') {
             $candidates[] = '/opt/homebrew/bin/pdftotext';
@@ -124,7 +143,29 @@ class PopplerTextExtractor implements PdfTextExtractor
             $candidates[] = '/usr/local/bin/pdftotext';
         }
 
-        return $candidates;
+        return array_values(array_unique($candidates));
+    }
+
+    private function resolveFromPathLookup(): ?string
+    {
+        $command = PHP_OS_FAMILY === 'Windows'
+            ? ['where.exe', 'pdftotext']
+            : ['which', 'pdftotext'];
+
+        $result = $this->process()->run($command);
+
+        if (! $result->successful()) {
+            return null;
+        }
+
+        $lines = preg_split("/\r\n|\n|\r/", trim($result->output())) ?: [];
+        $first = trim((string) ($lines[0] ?? ''));
+
+        if ($first === '' || ! is_file($first)) {
+            return null;
+        }
+
+        return $first;
     }
 
     private function process(): PendingProcess

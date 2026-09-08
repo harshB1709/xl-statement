@@ -60,7 +60,8 @@
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
             "@php artisan package:discover --ansi",
-            "@php bin/restore-nativephp-pdfpagesize.php"
+            "@php bin/restore-nativephp-pdfpagesize.php",
+            "@php bin/sync-nativephp-icons.php"
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force",
