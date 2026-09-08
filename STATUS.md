@@ -3,7 +3,7 @@
 Living handoff so you (or another agent) can switch tabs without losing context.  
 **Spec / original plan:** [`PLAN.md`](PLAN.md)  
 **App (Herd):** http://xl-statement.test  
-**Git:** `main` (no remote yet — push or zip for Windows clone)
+**Git:** `main` → https://github.com/harshB1709/xl-statement.git
 
 Last updated: 2026-09-08 (Poppler win extras)
 
