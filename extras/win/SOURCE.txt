@@ -1,0 +1,8 @@
+Poppler Windows binaries for XL Statement
+Source: https://github.com/oschwartz10612/poppler-windows
+Release: v26.07.0-0
+Asset: Release-26.07.0-0.zip
+Shipped: pdftotext.exe + PE import-closure DLLs from Library/bin/
+Omitted: other Poppler CLIs (pdfinfo, pdftoppm, …) and unused bin/ DLLs
+License: GPL-2.0 — see LICENSE-poppler.txt
+Fetched: 2026-09-08
