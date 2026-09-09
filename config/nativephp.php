@@ -46,7 +46,7 @@ return [
     /**
      * The Website of your application.
      */
-    'website' => env('NATIVEPHP_APP_WEBSITE', 'https://nativephp.com'),
+    'website' => env('NATIVEPHP_APP_WEBSITE', 'https://github.com/harshB1709/xl-statement'),
 
     /**
      * The default service provider for your application. This provider

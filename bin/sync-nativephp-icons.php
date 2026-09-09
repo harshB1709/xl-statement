@@ -1,11 +1,11 @@
 <?php
 
 /**
- * Keep NativePHP desktop builds on XL Statement icons.
+ * Keep NativePHP desktop builds on XL Statement branding.
  *
  * 1. Copy public/icon.* into every Electron buildResources location.
- * 2. Replace InstallsAppIcon so electronPath('build/icon.*') cannot miss
- *    a published nativephp/electron project (upstream path-join bug).
+ * 2. Patch InstallsAppIcon + PatchesPackagesJson so electronPath('…/file')
+ *    cannot miss a published nativephp/electron project (upstream path bug).
  */
 $root = dirname(__DIR__);
 $sources = [
@@ -54,16 +54,22 @@ foreach ($targets as $directory) {
     }
 }
 
-$traitPatch = $root.'/patches/nativephp-InstallsAppIcon.php';
-$traitDestination = $root.'/vendor/nativephp/desktop/src/Drivers/Electron/Traits/InstallsAppIcon.php';
+$patches = [
+    $root.'/patches/nativephp-InstallsAppIcon.php' => $root.'/vendor/nativephp/desktop/src/Drivers/Electron/Traits/InstallsAppIcon.php',
+    $root.'/patches/nativephp-PatchesPackagesJson.php' => $root.'/vendor/nativephp/desktop/src/Drivers/Electron/Traits/PatchesPackagesJson.php',
+];
 
-if (is_file($traitPatch) && is_dir(dirname($traitDestination))) {
-    if (! copy($traitPatch, $traitDestination)) {
-        fwrite(STDERR, "Failed to patch NativePHP InstallsAppIcon trait\n");
+foreach ($patches as $patch => $destination) {
+    if (! is_file($patch) || ! is_dir(dirname($destination))) {
+        continue;
+    }
+
+    if (! copy($patch, $destination)) {
+        fwrite(STDERR, 'Failed to patch '.basename($destination)."\n");
         exit(1);
     }
 
-    echo "Patched NativePHP InstallsAppIcon for published Electron projects.\n";
+    echo 'Patched NativePHP '.basename($destination)."\n";
 }
 
 if ($copied > 0) {

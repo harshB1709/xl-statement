@@ -67,42 +67,43 @@ Build the installer **on Windows** (Apple Silicon → Win via Wine often fails a
 ```powershell
 git lfs install
 git pull
-git lfs pull                    # REQUIRED — without this, extras/win/*.exe are ~130-byte stubs
-# Confirm Poppler is real (~70KB+), not an LFS pointer:
-#   Get-Item extras\win\pdftotext.exe | Select-Object Length
+git lfs pull
 
-# Product name / exe / shortcut icon branding:
-#   In .env set APP_NAME="XL Statement"  (not Laravel)
+# Branding — must NOT be Laravel (that produces laravel.exe + NativePHP-looking shortcuts)
+# .env:
+#   APP_NAME="XL Statement"
+#   NATIVEPHP_APP_DESCRIPTION="Convert PDF bank statements into Excel"
+#   NATIVEPHP_APP_ID=com.xlstatement.app
 
 composer install
-composer dump-autoload          # pdfPageSize patch + icon sync + InstallsAppIcon patch
-npm install
-
-# Wipe previous Electron output so icons are not reused from cache:
+php artisan xl:prepare-native-build   # fails loudly if icons/LFS/APP_NAME are wrong
 Remove-Item -Recurse -Force nativephp\electron\dist -ErrorAction SilentlyContinue
-
-# PHP 8.4 on PATH (not XAMPP 7.x), Node 22 via nvm-windows
 php artisan native:build win
 ```
 
-Before shipping, from the **project** (not PATH):
+Installer: `nativephp\electron\dist\XL Statement-*-setup.exe` (name follows `APP_NAME`).
+Install location is typically:
+
+`%LOCALAPPDATA%\Programs\xl-statement\`
+
+### After install — verify (paste these outputs)
 
 ```powershell
-php artisan xl:diagnose-poppler
+$dir = "$env:LOCALAPPDATA\Programs\xl-statement"
+# If that folder is missing, list installs:
+Get-ChildItem "$env:LOCALAPPDATA\Programs" | Select-Object Name
+
+Get-ChildItem $dir -ErrorAction SilentlyContinue | Select-Object Name
+Get-Item "$dir\*.exe" -ErrorAction SilentlyContinue | Select-Object Name, Length
+Get-Item "$dir\extras\win\pdftotext.exe" -ErrorAction SilentlyContinue | Select-Object FullName, Length
+# Length must be tens of KB+. Missing or ~130 bytes = Poppler not shipped / LFS stub.
 ```
 
-Installer / unpacked app: `nativephp/electron/dist/`.
-
-### After install — verify
-
-1. **`where pdftotext` can be empty.** That is normal. Poppler is bundled next to the app exe, not on PATH.
-2. In File Explorer open the install / `win-unpacked` folder and confirm:
-   - `extras\win\pdftotext.exe` exists and is **tens of KB+** (not ~130 bytes)
-   - Shortcut / exe is **not** named `laravel.exe` (fix `APP_NAME` and rebuild)
-3. Convert a statement — UI should say **Extracted with poppler**.
-4. If the Start Menu still shows the NativePHP “N”, uninstall, delete the old shortcut, reinstall (Windows caches icons aggressively).
-
-If still smalot: run `php artisan xl:diagnose-poppler` on the Windows **dev** tree, and check [`STATUS.md`](STATUS.md).
+Notes:
+- **`where pdftotext` empty is normal** — Poppler is next to the exe under `extras\win`, not on PATH.
+- Shortcut tooltip “A NativePHP electron application” means the Electron `package.json` was never patched (old build or `APP_NAME`/publish path bug). Rebuild after `xl:prepare-native-build`.
+- Uninstall the old app, delete the Start Menu shortcut, then install the new setup (Windows caches icons).
+- In-app convert should show **Extracted with poppler**.
 
 ---
 

@@ -5,7 +5,7 @@ Living handoff so you (or another agent) can switch tabs without losing context.
 **App (Herd):** http://xl-statement.test  
 **Git:** `main` → https://github.com/harshB1709/xl-statement.git
 
-Last updated: 2026-09-09 (Poppler ancestor walk + icon trait patch)
+Last updated: 2026-09-09 (NSIS branding + package.json patch)
 
 ---
 
@@ -168,4 +168,4 @@ php -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->m
 - **`where pdftotext` empty is OK** on Windows. Packaged Poppler is `extras/win` next to the exe (`NATIVEPHP_EXTRAS_PATH`), never PATH. Diagnose: `php artisan xl:diagnose-poppler`.
 - **Packaged Windows:** also walk ancestors of `base_path` / `PHP_BINARY` for `extras/…`; reject Git LFS pointer stubs (&lt;1KB / `version https://git-lfs…`). Always `git lfs pull` before `native:build`.
 - App mark: `resources/images/logo.svg` + `public/favicon.svg`; NativePHP OS icons: `public/icon.png` / `.ico` / `.icns` (teal XL + grid). Workspace: `tmp/custom-icons/xl-statement-mark/`.
-- **Icons in desktop build:** `bin/sync-nativephp-icons.php` copies icons **and** patches `InstallsAppIcon` so published Electron projects get custom icons. Set `APP_NAME="XL Statement"` before build (`.env` with `Laravel` produces `laravel.exe` + wrong branding). Wipe `nativephp/electron/dist` before rebuild; reinstall to bust Windows icon cache.
+- **NSIS installer branding:** shortcut tooltip “A NativePHP electron application” + default “N” icon means Electron `package.json` / `build/icon.*` were not updated. Causes: `.env` `APP_NAME=Laravel`, and/or upstream `electronPath('package.json'|'build/icon.png')` bug with a published Electron project. Mitigated by patches in `bin/sync-nativephp-icons.php` + `php artisan xl:prepare-native-build`. Install dir is usually `%LOCALAPPDATA%\Programs\xl-statement\` — check `extras\win\pdftotext.exe` there (not `where`).
