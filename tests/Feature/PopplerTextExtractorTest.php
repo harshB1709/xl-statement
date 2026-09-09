@@ -3,6 +3,14 @@
 use App\Services\Pdf\PopplerTextExtractor;
 use Illuminate\Support\Facades\Process;
 
+function fakePdftotextBinary(string $path): void
+{
+    @mkdir(dirname($path), 0777, true);
+    // Must be >= 1KB so PopplerTextExtractor rejects Git LFS pointer stubs.
+    file_put_contents($path, str_repeat('A', 2048));
+    chmod($path, 0755);
+}
+
 it('resolves absolute homebrew paths when which cannot see pdftotext', function () {
     config(['statements.pdftotext_path' => null]);
 
@@ -20,8 +28,7 @@ it('resolves absolute homebrew paths when which cannot see pdftotext', function 
 
 it('prefers an explicit constructor binary path', function () {
     $path = storage_path('framework/testing/fake-pdftotext');
-    file_put_contents($path, "#!/bin/sh\necho ok\n");
-    chmod($path, 0755);
+    fakePdftotextBinary($path);
 
     $extractor = new PopplerTextExtractor($path);
 
@@ -37,9 +44,7 @@ it('resolves the NativePHP packaged extras path before base_path extras', functi
     $extrasRoot = storage_path('framework/testing/nativephp-extras');
     $binary = $extrasRoot.DIRECTORY_SEPARATOR.$platform.DIRECTORY_SEPARATOR.$binaryName;
 
-    @mkdir(dirname($binary), 0777, true);
-    file_put_contents($binary, "#!/bin/sh\necho packaged\n");
-    chmod($binary, 0755);
+    fakePdftotextBinary($binary);
 
     putenv('NATIVEPHP_EXTRAS_PATH='.$extrasRoot);
     $_ENV['NATIVEPHP_EXTRAS_PATH'] = $extrasRoot;
@@ -60,6 +65,47 @@ it('resolves the NativePHP packaged extras path before base_path extras', functi
         putenv('NATIVEPHP_EXTRAS_PATH');
         unset($_ENV['NATIVEPHP_EXTRAS_PATH'], $_SERVER['NATIVEPHP_EXTRAS_PATH']);
     }
+});
+
+it('finds extras under base_path when env is unset', function () {
+    config(['statements.pdftotext_path' => null]);
+
+    $platform = PHP_OS_FAMILY === 'Windows' ? 'win' : (PHP_OS_FAMILY === 'Darwin' ? 'mac' : 'linux');
+    $binaryName = PHP_OS_FAMILY === 'Windows' ? 'pdftotext.exe' : 'pdftotext';
+    $binary = base_path('extras'.DIRECTORY_SEPARATOR.$platform.DIRECTORY_SEPARATOR.$binaryName);
+
+    // Don't clobber real Windows Poppler binaries checked into extras/win.
+    if (is_file($binary) && filesize($binary) > 10_000) {
+        test()->markTestSkipped('Real extras binary already present');
+    }
+
+    fakePdftotextBinary($binary);
+
+    putenv('NATIVEPHP_EXTRAS_PATH');
+    unset($_ENV['NATIVEPHP_EXTRAS_PATH'], $_SERVER['NATIVEPHP_EXTRAS_PATH']);
+
+    Process::fake([
+        'which pdftotext' => Process::result(output: '', exitCode: 1),
+        'where.exe pdftotext' => Process::result(output: '', exitCode: 1),
+    ]);
+
+    try {
+        $extractor = new PopplerTextExtractor;
+
+        expect($extractor->resolveBinary())->toBe($binary);
+    } finally {
+        @unlink($binary);
+    }
+});
+
+it('rejects git lfs pointer stubs as unusable binaries', function () {
+    $path = storage_path('framework/testing/lfs-pointer-pdftotext');
+    file_put_contents($path, "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 1\n");
+    chmod($path, 0755);
+
+    $extractor = new PopplerTextExtractor($path);
+
+    expect($extractor->isAvailable())->toBeFalse();
 });
 
 it('tags extracted text as poppler when run against a real pdf', function () {

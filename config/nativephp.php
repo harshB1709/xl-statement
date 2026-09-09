@@ -75,6 +75,8 @@ return [
         'NATIVEPHP_AZURE_ENDPOINT',
         'NATIVEPHP_AZURE_CERTIFICATE_PROFILE_NAME',
         'NATIVEPHP_AZURE_CODE_SIGNING_ACCOUNT_NAME',
+        // Mac Homebrew path must not ship inside the Windows package.
+        'PDFTOTEXT_PATH',
     ],
 
     /**

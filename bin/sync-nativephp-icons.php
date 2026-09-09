@@ -1,11 +1,11 @@
 <?php
 
 /**
- * NativePHP copies public/icon.* during native:build, but electronPath('build/icon.png')
- * checks for package.json under the icon path itself and can miss a published
- * nativephp/electron project — leaving the default NativePHP mark in the installer.
+ * Keep NativePHP desktop builds on XL Statement icons.
  *
- * Sync icons into every buildResources location the Electron project may use.
+ * 1. Copy public/icon.* into every Electron buildResources location.
+ * 2. Replace InstallsAppIcon so electronPath('build/icon.*') cannot miss
+ *    a published nativephp/electron project (upstream path-join bug).
  */
 $root = dirname(__DIR__);
 $sources = [
@@ -52,6 +52,18 @@ foreach ($targets as $directory) {
 
         $copied++;
     }
+}
+
+$traitPatch = $root.'/patches/nativephp-InstallsAppIcon.php';
+$traitDestination = $root.'/vendor/nativephp/desktop/src/Drivers/Electron/Traits/InstallsAppIcon.php';
+
+if (is_file($traitPatch) && is_dir(dirname($traitDestination))) {
+    if (! copy($traitPatch, $traitDestination)) {
+        fwrite(STDERR, "Failed to patch NativePHP InstallsAppIcon trait\n");
+        exit(1);
+    }
+
+    echo "Patched NativePHP InstallsAppIcon for published Electron projects.\n";
 }
 
 if ($copied > 0) {

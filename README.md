@@ -67,18 +67,42 @@ Build the installer **on Windows** (Apple Silicon → Win via Wine often fails a
 ```powershell
 git lfs install
 git pull
+git lfs pull                    # REQUIRED — without this, extras/win/*.exe are ~130-byte stubs
+# Confirm Poppler is real (~70KB+), not an LFS pointer:
+#   Get-Item extras\win\pdftotext.exe | Select-Object Length
+
+# Product name / exe / shortcut icon branding:
+#   In .env set APP_NAME="XL Statement"  (not Laravel)
+
 composer install
-composer dump-autoload          # restores pdfPageSize.js patch + syncs app icons
+composer dump-autoload          # pdfPageSize patch + icon sync + InstallsAppIcon patch
 npm install
-# Use PHP 8.4 on PATH (not XAMPP 7.x), Node 22 via nvm-windows
+
+# Wipe previous Electron output so icons are not reused from cache:
+Remove-Item -Recurse -Force nativephp\electron\dist -ErrorAction SilentlyContinue
+
+# PHP 8.4 on PATH (not XAMPP 7.x), Node 22 via nvm-windows
 php artisan native:build win
 ```
 
-Installer / unpacked app land under `nativephp/electron/dist/`.
+Before shipping, from the **project** (not PATH):
 
-**After install, convert a statement** — the UI should say **Extracted with poppler**. If it says smalot, the packaged extras path isn’t resolving (see [`STATUS.md`](STATUS.md)).
+```powershell
+php artisan xl:diagnose-poppler
+```
 
-Reinstall after icon changes; Windows caches shortcut icons.
+Installer / unpacked app: `nativephp/electron/dist/`.
+
+### After install — verify
+
+1. **`where pdftotext` can be empty.** That is normal. Poppler is bundled next to the app exe, not on PATH.
+2. In File Explorer open the install / `win-unpacked` folder and confirm:
+   - `extras\win\pdftotext.exe` exists and is **tens of KB+** (not ~130 bytes)
+   - Shortcut / exe is **not** named `laravel.exe` (fix `APP_NAME` and rebuild)
+3. Convert a statement — UI should say **Extracted with poppler**.
+4. If the Start Menu still shows the NativePHP “N”, uninstall, delete the old shortcut, reinstall (Windows caches icons aggressively).
+
+If still smalot: run `php artisan xl:diagnose-poppler` on the Windows **dev** tree, and check [`STATUS.md`](STATUS.md).
 
 ---
 

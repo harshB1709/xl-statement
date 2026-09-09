@@ -78,7 +78,7 @@ class PopplerTextExtractor implements PdfTextExtractor
     public function resolveBinary(): string
     {
         if ($this->binaryPath !== null) {
-            if (! is_file($this->binaryPath)) {
+            if (! $this->isUsableBinary($this->binaryPath)) {
                 throw new RuntimeException('pdftotext binary not found at '.$this->binaryPath);
             }
 
@@ -87,12 +87,12 @@ class PopplerTextExtractor implements PdfTextExtractor
 
         $configured = config('statements.pdftotext_path');
 
-        if (is_string($configured) && $configured !== '' && is_file($configured)) {
+        if (is_string($configured) && $configured !== '' && $this->isUsableBinary($configured)) {
             return $configured;
         }
 
         foreach ($this->candidateBinaryPaths() as $candidate) {
-            if (is_file($candidate)) {
+            if ($this->isUsableBinary($candidate)) {
                 return $candidate;
             }
         }
@@ -117,10 +117,8 @@ class PopplerTextExtractor implements PdfTextExtractor
 
         $candidates = [];
 
-        $extrasEnv = env('NATIVEPHP_EXTRAS_PATH');
-
-        if (is_string($extrasEnv) && $extrasEnv !== '') {
-            $candidates[] = rtrim($extrasEnv, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$relative;
+        foreach ($this->extrasRootCandidates() as $extrasRoot) {
+            $candidates[] = rtrim($extrasRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$relative;
         }
 
         try {
@@ -133,6 +131,10 @@ class PopplerTextExtractor implements PdfTextExtractor
 
         $candidates[] = base_path('extras'.DIRECTORY_SEPARATOR.$relative);
 
+        foreach ($this->ancestorExtrasCandidates($relative) as $candidate) {
+            $candidates[] = $candidate;
+        }
+
         if (PHP_OS_FAMILY === 'Darwin') {
             $candidates[] = '/opt/homebrew/bin/pdftotext';
             $candidates[] = '/usr/local/bin/pdftotext';
@@ -144,6 +146,136 @@ class PopplerTextExtractor implements PdfTextExtractor
         }
 
         return array_values(array_unique($candidates));
+    }
+
+    /**
+     * @return array{available: bool, binary: ?string, extras_env: ?string, checked: list<array{path: string, usable: bool}>}
+     */
+    public function diagnose(): array
+    {
+        $checked = [];
+
+        foreach ($this->candidateBinaryPaths() as $candidate) {
+            $checked[] = [
+                'path' => $candidate,
+                'usable' => $this->isUsableBinary($candidate),
+            ];
+        }
+
+        $binary = null;
+
+        try {
+            $binary = $this->resolveBinary();
+        } catch (RuntimeException) {
+            $binary = null;
+        }
+
+        return [
+            'available' => $binary !== null,
+            'binary' => $binary,
+            'extras_env' => $this->nativephpExtrasPath(),
+            'checked' => $checked,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function extrasRootCandidates(): array
+    {
+        $roots = [];
+        $fromEnv = $this->nativephpExtrasPath();
+
+        if ($fromEnv !== null) {
+            $roots[] = $fromEnv;
+        }
+
+        return $roots;
+    }
+
+    private function nativephpExtrasPath(): ?string
+    {
+        foreach (['NATIVEPHP_EXTRAS_PATH'] as $key) {
+            $value = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
+
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        $viaHelper = env('NATIVEPHP_EXTRAS_PATH');
+
+        if (is_string($viaHelper) && $viaHelper !== '') {
+            return $viaHelper;
+        }
+
+        return null;
+    }
+
+    /**
+     * Packaged NativePHP keeps extras next to the exe, while Laravel base_path is
+     * under resources/build/app — walk ancestors and PHP binary parents.
+     *
+     * @return list<string>
+     */
+    private function ancestorExtrasCandidates(string $relative): array
+    {
+        $candidates = [];
+        $anchors = [base_path()];
+
+        if (defined('PHP_BINARY') && is_string(PHP_BINARY) && PHP_BINARY !== '') {
+            $anchors[] = dirname(PHP_BINARY);
+        }
+
+        foreach ($anchors as $anchor) {
+            $dir = $anchor;
+
+            for ($i = 0; $i < 6; $i++) {
+                $candidates[] = $dir.DIRECTORY_SEPARATOR.'extras'.DIRECTORY_SEPARATOR.$relative;
+                $parent = dirname($dir);
+
+                if ($parent === $dir) {
+                    break;
+                }
+
+                $dir = $parent;
+            }
+        }
+
+        return $candidates;
+    }
+
+    private function isUsableBinary(string $path): bool
+    {
+        if (! is_file($path)) {
+            return false;
+        }
+
+        $size = filesize($path);
+
+        // Real pdftotext is tens of KB+; Git LFS pointer stubs are ~100 bytes.
+        if ($size === false || $size < 1024) {
+            return false;
+        }
+
+        $handle = fopen($path, 'rb');
+
+        if ($handle === false) {
+            return false;
+        }
+
+        $head = fread($handle, 64);
+        fclose($handle);
+
+        if (! is_string($head)) {
+            return false;
+        }
+
+        if (str_starts_with($head, 'version https://git-lfs.github.com/spec/v1')) {
+            return false;
+        }
+
+        return true;
     }
 
     private function resolveFromPathLookup(): ?string
@@ -161,7 +293,7 @@ class PopplerTextExtractor implements PdfTextExtractor
         $lines = preg_split("/\r\n|\n|\r/", trim($result->output())) ?: [];
         $first = trim((string) ($lines[0] ?? ''));
 
-        if ($first === '' || ! is_file($first)) {
+        if ($first === '' || ! $this->isUsableBinary($first)) {
             return null;
         }
 

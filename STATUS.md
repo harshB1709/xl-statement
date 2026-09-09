@@ -5,7 +5,7 @@ Living handoff so you (or another agent) can switch tabs without losing context.
 **App (Herd):** http://xl-statement.test  
 **Git:** `main` → https://github.com/harshB1709/xl-statement.git
 
-Last updated: 2026-09-09 (packaged Poppler path + icons)
+Last updated: 2026-09-09 (Poppler ancestor walk + icon trait patch)
 
 ---
 
@@ -165,6 +165,7 @@ php -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->m
 - Prefer Boost MCP tools when available (`search-docs`, `database-schema`, `get-absolute-url`, `record-rule`).
 - Never commit `tests/Fixtures/real/*.pdf` or secrets.
 - If UI shows `#TRANSACTION` / 4 junk rows on kotak-2 → **smalot**, not Poppler — check engine label and binary resolution.
-- **Packaged Windows:** Poppler is next to the exe via `extraFiles` → `NATIVEPHP_EXTRAS_PATH` (`resources/../extras`), **not** under Laravel `base_path('extras')`. `PopplerTextExtractor` must resolve that env (or Storage disk `extras`) or the UI silently uses smalot.
+- **`where pdftotext` empty is OK** on Windows. Packaged Poppler is `extras/win` next to the exe (`NATIVEPHP_EXTRAS_PATH`), never PATH. Diagnose: `php artisan xl:diagnose-poppler`.
+- **Packaged Windows:** also walk ancestors of `base_path` / `PHP_BINARY` for `extras/…`; reject Git LFS pointer stubs (&lt;1KB / `version https://git-lfs…`). Always `git lfs pull` before `native:build`.
 - App mark: `resources/images/logo.svg` + `public/favicon.svg`; NativePHP OS icons: `public/icon.png` / `.ico` / `.icns` (teal XL + grid). Workspace: `tmp/custom-icons/xl-statement-mark/`.
-- **Icons in desktop build:** `bin/sync-nativephp-icons.php` (composer `post-autoload-dump`) copies icons into vendor + published `nativephp/electron/build`. Upstream `electronPath('build/icon.*')` can miss a published Electron project and leave the default NativePHP “N”. After pull: `composer dump-autoload` (or `php bin/sync-nativephp-icons.php`) then rebuild; reinstall the `.exe` (Windows caches shortcut icons).
+- **Icons in desktop build:** `bin/sync-nativephp-icons.php` copies icons **and** patches `InstallsAppIcon` so published Electron projects get custom icons. Set `APP_NAME="XL Statement"` before build (`.env` with `Laravel` produces `laravel.exe` + wrong branding). Wipe `nativephp/electron/dist` before rebuild; reinstall to bust Windows icon cache.
