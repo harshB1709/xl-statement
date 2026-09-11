@@ -8,8 +8,8 @@ class HeaderRowFinder
      * @var list<string>
      */
     private array $synonyms = [
-        'date', 'txn date', 'transaction date', 'value date', 'val date',
-        'narration', 'description', 'particulars', 'details', 'remarks', 'transaction details',
+        'date', 'txn date', 'transaction date', 'value date', 'val date', 'post date',
+        'narration', 'description', 'particulars', 'details', 'remarks', 'transaction details', 'transaction description',
         'chq', 'cheque', 'ref', 'reference', 'utr', 'chq/ref', 'chq / ref',
         'withdrawal', 'debit', 'withdrawals', 'dr',
         'deposit', 'credit', 'deposits', 'cr',
@@ -95,7 +95,8 @@ class HeaderRowFinder
 
         if (str_contains($normalized, 'transaction date')
             || str_contains($normalized, 'tran date')
-            || str_contains($normalized, 'value date')) {
+            || str_contains($normalized, 'value date')
+            || str_contains($normalized, 'post date')) {
             $score += 2;
         }
 
@@ -109,6 +110,77 @@ class HeaderRowFinder
         }
 
         return $score;
+    }
+
+    /**
+     * CBI Poppler headers span two lines, e.g. "Value" over "Date", "Branch" over "Code".
+     */
+    public function isContinuationLine(string $line): bool
+    {
+        $normalized = $this->normalize($line);
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (preg_match('/\d{1,2}[\/\-]\d{1,2}([\/\-]\d{2,4})?/', $normalized) === 1) {
+            return false;
+        }
+
+        if (preg_match('/\d{1,3}(?:,\d{2,3})+(?:\.\d{2})?|\d+\.\d{2}/', $normalized) === 1) {
+            return false;
+        }
+
+        $tokens = preg_split('/\s+/', $normalized) ?: [];
+        $known = ['date', 'code', 'number', 'no', 'num', 'particulars', 'details'];
+        $hits = 0;
+
+        foreach ($tokens as $token) {
+            if (in_array($token, $known, true)) {
+                $hits++;
+            }
+        }
+
+        return $hits >= 2 || ($hits >= 1 && count($tokens) <= 4 && $this->scoreLine($line) < 2);
+    }
+
+    public function mergeHeaderLines(string $top, string $bottom): string
+    {
+        $length = max(strlen($top), strlen($bottom));
+        $top = str_pad($top, $length);
+        $bottom = str_pad($bottom, $length);
+        $merged = '';
+        $pending = '';
+
+        for ($index = 0; $index < $length; $index++) {
+            $a = $top[$index];
+            $b = $bottom[$index];
+
+            if ($a === ' ' && $b !== ' ') {
+                if ($pending !== '') {
+                    $merged .= $pending;
+                    $pending = '';
+                }
+                $merged .= $b;
+            } elseif ($a !== ' ' && $b !== ' ') {
+                $merged .= $a;
+                $pending .= $b;
+            } elseif ($a !== ' ') {
+                $merged .= $a;
+            } else {
+                if ($pending !== '') {
+                    $merged .= $pending;
+                    $pending = '';
+                }
+                $merged .= ' ';
+            }
+        }
+
+        if ($pending !== '') {
+            $merged .= $pending;
+        }
+
+        return rtrim($merged);
     }
 
     public function normalize(string $line): string

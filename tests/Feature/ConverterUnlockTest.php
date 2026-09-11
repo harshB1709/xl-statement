@@ -69,7 +69,7 @@ it('passes stored unlock passwords when converting to excel', function () {
     $fingerprint = 'fp-locked-test';
 
     Livewire::test(Converter::class)
-        ->set('step', 3)
+        ->set('step', 2)
         ->set('outputName', 'out.xlsx')
         ->set('outputDirectory', storage_path('framework/testing'))
         ->set('saveProfiles', false)
@@ -104,7 +104,7 @@ it('passes stored unlock passwords when converting to excel', function () {
             ],
         ])
         ->call('convert')
-        ->assertSet('resultMessage', 'Saved converter-convert-out.xlsx · 3 rows');
+        ->assertSet('resultMessage', 'Ready converter-convert-out.xlsx · 3 rows');
 
     expect($passwordsSeen[$path] ?? null)->toBe('unlock-secret');
 });

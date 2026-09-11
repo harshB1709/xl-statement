@@ -154,14 +154,19 @@ class DateLedRowAssembler
 
     /**
      * @param  list<string>  $headerCells
+     * @param  list<list<string>>  $slicedRows
      */
-    public function shouldUse(int $slicedRowCount, int $dateLikeLineCount, array $headerCells = []): bool
+    public function shouldUse(int $slicedRowCount, int $dateLikeLineCount, array $headerCells = [], array $slicedRows = []): bool
     {
         if ($dateLikeLineCount < 3) {
             return false;
         }
 
         if ($this->headersLookBroken($headerCells) || count($headerCells) <= 2) {
+            return true;
+        }
+
+        if ($this->slicedRowsLookChopped($slicedRows)) {
             return true;
         }
 
@@ -197,7 +202,76 @@ class DateLedRowAssembler
             }
         }
 
+        // Poppler -layout can leave compound headers split ("Post" | "Date"),
+        // which makes the fixed-width slicer invent Frankenstein cells on CBI.
+        $normalized = array_map(
+            static fn (string $cell): string => strtolower(trim($cell)),
+            $headerCells,
+        );
+
+        // Two-line CBI headers leave orphan first words when the second line
+        // ("Date" / "Code" / "Number") is not merged into the boundary line.
+        if (in_array('value', $normalized, true) && ! in_array('value date', $normalized, true)) {
+            return true;
+        }
+
+        $splitPairs = [
+            ['post', 'date'],
+            ['value', 'date'],
+            ['txn', 'date'],
+            ['transaction', 'date'],
+            ['transaction', 'description'],
+            ['transaction', 'details'],
+            ['branch', 'code'],
+            ['cheque', 'no'],
+            ['chq', 'no'],
+        ];
+
+        for ($index = 0; $index < count($normalized) - 1; $index++) {
+            foreach ($splitPairs as [$left, $right]) {
+                if ($normalized[$index] === $left && $normalized[$index + 1] === $right) {
+                    return true;
+                }
+            }
+        }
+
         return false;
+    }
+
+    /**
+     * Fixed-width cuts through dates/amounts look like "/04/2025" or ",23,500.00".
+     *
+     * @param  list<list<string>>  $rows
+     */
+    public function slicedRowsLookChopped(array $rows): bool
+    {
+        $checked = 0;
+        $chopped = 0;
+
+        foreach (array_slice($rows, 0, 40) as $row) {
+            foreach ($row as $cell) {
+                $cell = trim((string) $cell);
+
+                if ($cell === '') {
+                    continue;
+                }
+
+                $checked++;
+
+                if (preg_match('/^\/\d{1,2}\//', $cell) === 1) {
+                    $chopped++;
+                } elseif (preg_match('/^,\d/', $cell) === 1) {
+                    $chopped++;
+                } elseif (preg_match('/^\d{1,2}\/\d{2}$/', $cell) === 1) {
+                    $chopped++;
+                } elseif (preg_match('/\d\s+\d{1,2},\d{2},\d{3}\.\d{2}/', $cell) === 1) {
+                    // e.g. "9 0,46,057.06" from a cut through 90,46,057.06
+                    $chopped++;
+                }
+            }
+        }
+
+        return $checked >= 8 && $chopped >= 3;
     }
 
     /**

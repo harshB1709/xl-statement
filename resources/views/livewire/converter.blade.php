@@ -1,6 +1,6 @@
 <div class="space-y-6">
     <nav class="flex flex-wrap gap-2 text-sm">
-        @foreach ([1 => 'Files', 2 => 'Map columns', 3 => 'Export'] as $number => $label)
+        @foreach ([1 => 'Files', 2 => 'Map columns'] as $number => $label)
             <button
                 type="button"
                 wire:click="$set('step', {{ $number }})"
@@ -23,14 +23,12 @@
         ])>
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p>{{ $resultMessage }}</p>
-                @if ($resultPath)
+                @if ($resultPath && $isNative)
                     <div class="flex gap-2">
                         <button wire:click="openResult" type="button" class="btn-primary !rounded-lg !px-3 !py-1.5">
-                            {{ $isNative ? 'Open file' : 'Download' }}
+                            Open file
                         </button>
-                        @if ($isNative)
-                            <button wire:click="showResult" type="button" class="btn-secondary !rounded-lg !px-3 !py-1.5">Show in folder</button>
-                        @endif
+                        <button wire:click="showResult" type="button" class="btn-secondary !rounded-lg !px-3 !py-1.5">Show in folder</button>
                     </div>
                 @endif
             </div>
@@ -46,7 +44,7 @@
                         @if ($isNative)
                             Or browse with the native file picker. Your files never leave this computer.
                         @else
-                            Browser mode via Herd — upload PDFs below. Output saves to <code class="text-xs text-ink">storage/app/exports</code>.
+                            Browser mode — upload PDFs below, then download Excel from the map step.
                         @endif
                     </p>
                     @if ($isNative)
@@ -197,95 +195,56 @@
                             <input wire:model="saveProfiles" type="checkbox" class="rounded border-line text-accent focus:ring-accent">
                             Save as profile
                         </label>
-                        <button wire:click="goToExport" type="button" class="btn-primary w-full">
-                            Next: Export →
+
+                        <div>
+                            <label class="text-xs font-medium uppercase tracking-wide text-muted">File name</label>
+                            <input wire:model="outputName" type="text" class="field mt-1 w-full">
+                        </div>
+
+                        <details class="rounded-xl bg-surface-2 p-3 text-sm" open>
+                            <summary class="cursor-pointer font-medium text-ink">Columns in Excel</summary>
+                            <div class="mt-3 grid grid-cols-2 gap-2 text-ink">
+                                @foreach ([
+                                    'date' => 'Date',
+                                    'value_date' => 'Value Date',
+                                    'description' => 'Description',
+                                    'reference' => 'Ref / Cheque',
+                                    'debit' => 'Debit',
+                                    'credit' => 'Credit',
+                                    'balance' => 'Balance',
+                                    'bank' => 'Bank',
+                                    'source_file' => 'Source file',
+                                    'page' => 'Page',
+                                ] as $key => $label)
+                                    <label class="flex items-center gap-2">
+                                        <input wire:model="exportColumns.{{ $key }}" type="checkbox" class="rounded border-line text-accent focus:ring-accent">
+                                        {{ $label }}
+                                    </label>
+                                @endforeach
+                            </div>
+                        </details>
+
+                        <details class="rounded-xl bg-surface-2 p-3 text-sm">
+                            <summary class="cursor-pointer font-medium text-ink">Excel options</summary>
+                            <div class="mt-3 grid gap-2 text-ink">
+                                <label class="flex items-center gap-2"><input wire:model="indianFormat" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Indian lakhs/crores</label>
+                                <label class="flex items-center gap-2"><input wire:model="mergeIntoOneSheet" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Merge into one sheet</label>
+                                <label class="flex items-center gap-2"><input wire:model="includeSummary" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Include Summary sheet</label>
+                                <label class="flex items-center gap-2"><input wire:model="sortByDate" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Sort by date</label>
+                                <select wire:model="excelDateFormat" class="field">
+                                    <option value="dd-mm-yyyy">dd-mm-yyyy</option>
+                                    <option value="dd-mmm-yyyy">dd-mmm-yyyy</option>
+                                    <option value="yyyy-mm-dd">yyyy-mm-dd</option>
+                                </select>
+                            </div>
+                        </details>
+
+                        <button wire:click="downloadExcel" type="button" class="btn-primary w-full" @disabled(! $this->allLayoutsValid())>
+                            {{ $isNative ? 'Save Excel…' : 'Download Excel' }}
                         </button>
                     </aside>
                 </div>
             @endif
-        </section>
-    @endif
-
-    @if ($step === 3)
-        <section class="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-            <div class="panel p-5">
-                <h2 class="font-semibold text-ink">Files ready</h2>
-                <ul class="mt-3 space-y-2 text-sm">
-                    @foreach ($files as $file)
-                        @if ($file['fingerprint'])
-                            <li class="flex justify-between gap-3">
-                                <span class="text-ink">{{ $file['name'] }}</span>
-                                <span class="text-muted">{{ $file['row_count'] }} rows</span>
-                            </li>
-                        @endif
-                    @endforeach
-                </ul>
-            </div>
-
-            <div class="panel space-y-4 p-5">
-                <div>
-                    <label class="text-sm font-medium text-ink">File name</label>
-                    <input wire:model="outputName" type="text" class="field mt-1 w-full">
-                </div>
-                <div>
-                    <label class="text-sm font-medium text-ink">Save to</label>
-                    <div class="mt-1 flex gap-2">
-                        <input wire:model="outputDirectory" type="text" @disabled(! $isNative) class="field w-full disabled:opacity-70">
-                        @if ($isNative)
-                            <button wire:click="chooseOutputDirectory" type="button" class="btn-secondary shrink-0">Change…</button>
-                        @endif
-                    </div>
-                </div>
-
-                <details class="rounded-xl bg-surface-2 p-3 text-sm" open>
-                    <summary class="cursor-pointer font-medium text-ink">Columns in Excel</summary>
-                    <div class="mt-3 grid grid-cols-2 gap-2 text-ink sm:grid-cols-3">
-                        @foreach ([
-                            'date' => 'Date',
-                            'value_date' => 'Value Date',
-                            'description' => 'Description',
-                            'reference' => 'Ref / Cheque',
-                            'debit' => 'Debit',
-                            'credit' => 'Credit',
-                            'balance' => 'Balance',
-                            'bank' => 'Bank',
-                            'source_file' => 'Source file',
-                            'page' => 'Page',
-                        ] as $key => $label)
-                            <label class="flex items-center gap-2">
-                                <input wire:model="exportColumns.{{ $key }}" type="checkbox" class="rounded border-line text-accent focus:ring-accent">
-                                {{ $label }}
-                            </label>
-                        @endforeach
-                    </div>
-                </details>
-
-                <details class="rounded-xl bg-surface-2 p-3 text-sm">
-                    <summary class="cursor-pointer font-medium text-ink">Options</summary>
-                    <div class="mt-3 grid gap-2 text-ink">
-                        <label class="flex items-center gap-2"><input wire:model="indianFormat" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Indian lakhs/crores (Excel; avoid in Numbers)</label>
-                        <label class="flex items-center gap-2"><input wire:model="mergeIntoOneSheet" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Merge into one sheet</label>
-                        <label class="flex items-center gap-2"><input wire:model="includeSummary" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Include Summary sheet</label>
-                        <label class="flex items-center gap-2"><input wire:model="sortByDate" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Sort by date</label>
-                        <select wire:model="excelDateFormat" class="field">
-                            <option value="dd-mm-yyyy">dd-mm-yyyy</option>
-                            <option value="dd-mmm-yyyy">dd-mmm-yyyy</option>
-                            <option value="yyyy-mm-dd">yyyy-mm-dd</option>
-                        </select>
-                    </div>
-                </details>
-
-                <div class="flex flex-wrap gap-2">
-                    <button wire:click="convert" type="button" class="btn-primary">
-                        Convert to Excel
-                    </button>
-                    @if ($isNative)
-                        <button wire:click="saveAs" type="button" class="btn-secondary">
-                            Save As…
-                        </button>
-                    @endif
-                </div>
-            </div>
         </section>
     @endif
 </div>

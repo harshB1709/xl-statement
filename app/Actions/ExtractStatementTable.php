@@ -44,19 +44,38 @@ class ExtractStatementTable
         $bodyLines = [];
         $pageOfLines = [];
         $preamble = [];
+        $headerLine = $header['line'];
+        $headerSkipThrough = $header['line_index'];
+        $mergedContinuationHeader = false;
+
+        $headerPageLines = preg_split("/\r\n|\n|\r/", $extracted->pages[$header['page_index']] ?? '') ?: [];
+        $continuationIndex = $header['line_index'] + 1;
+
+        if (isset($headerPageLines[$continuationIndex])
+            && $this->headerRowFinder->isContinuationLine($headerPageLines[$continuationIndex])) {
+            $headerLine = $this->headerRowFinder->mergeHeaderLines($headerLine, $headerPageLines[$continuationIndex]);
+            $headerSkipThrough = $continuationIndex;
+            $mergedContinuationHeader = true;
+        }
 
         foreach ($extracted->pages as $pageIndex => $page) {
             $lines = preg_split("/\r\n|\n|\r/", $page) ?: [];
             $start = 0;
 
             if ($pageIndex === $header['page_index']) {
-                $start = $header['line_index'] + 1;
+                $start = $headerSkipThrough + 1;
                 $preamble = array_slice($lines, 0, $header['line_index']);
             } else {
-                // Skip until a line that looks like the repeated header, then take body after it.
+                // Skip until a line that looks like the repeated header, then take body after it
+                // (and any continuation line such as "Date / Code / Number").
                 foreach ($lines as $lineIndex => $line) {
                     if ($this->headerRowFinder->scoreLine($line) >= 2) {
                         $start = $lineIndex + 1;
+
+                        if (isset($lines[$start]) && $this->headerRowFinder->isContinuationLine($lines[$start])) {
+                            $start++;
+                        }
+
                         break;
                     }
                 }
@@ -70,12 +89,16 @@ class ExtractStatementTable
                     continue;
                 }
 
+                if ($this->headerRowFinder->isContinuationLine($line)) {
+                    continue;
+                }
+
                 $bodyLines[] = $line;
                 $pageOfLines[] = $pageIndex + 1;
             }
         }
 
-        $boundaries = $this->columnBoundaryDetector->detect($header['line'], $bodyLines);
+        $boundaries = $this->columnBoundaryDetector->detect($headerLine, $bodyLines);
         $sliced = $this->rowSlicer->slice($boundaries, $bodyLines);
         $dateLikeBody = $this->dateLedRowAssembler->countDateLikeLines($bodyLines);
 
@@ -124,7 +147,12 @@ class ExtractStatementTable
 
         $bankName = $this->sniffBankName(implode("\n", $preamble)."\n".$extracted->fullText());
 
-        if ($this->dateLedRowAssembler->shouldUse(count($sliced), $dateLikeBody, $headerCells)) {
+        // Two-line headers (CBI Poppler: Value/Date, Branch/Code, Cheque/Number) rarely
+        // align well enough for fixed-width slicing — prefer date-led assembly.
+        $preferDateLed = ($mergedContinuationHeader && $dateLikeBody >= 3)
+            || $this->dateLedRowAssembler->shouldUse(count($sliced), $dateLikeBody, $headerCells, $keptRows);
+
+        if ($preferDateLed) {
             return $this->dateLedRowAssembler->assemble(
                 pages: $extracted->pages,
                 sourceFile: $extracted->sourceFile,

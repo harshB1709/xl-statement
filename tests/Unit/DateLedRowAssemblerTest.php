@@ -125,7 +125,31 @@ it('detects glued headers without false-positiving on adjacent cells', function 
         ->and($assembler->headersLookBroken(['DescriptionDebitCreditBalance']))
         ->toBeTrue()
         ->and($assembler->headersLookBroken(['DateParticulars', 'Debit', 'Credit']))
-        ->toBeTrue();
+        ->toBeTrue()
+        ->and($assembler->headersLookBroken(['Post', 'Date', 'Value', 'Date', 'Transaction', 'Description', 'Debit', 'Credit', 'Balance']))
+        ->toBeTrue()
+        ->and($assembler->headersLookBroken(['Post Date', 'Value Date', 'Transaction Description', 'Debit', 'Credit', 'Balance']))
+        ->toBeFalse();
+});
+
+it('prefers date-led assembly when poppler splits cbi compound headers', function () {
+    $assembler = new DateLedRowAssembler;
+
+    expect($assembler->shouldUse(
+        slicedRowCount: 390,
+        dateLikeLineCount: 420,
+        headerCells: ['Post', 'Date', 'Value', 'Date', 'Debit', 'Credit', 'Balance'],
+    ))->toBeTrue()
+        ->and($assembler->shouldUse(
+            slicedRowCount: 390,
+            dateLikeLineCount: 420,
+            headerCells: ['Post Date', 'Value', 'Branch', 'Cheque', 'Debit', 'Credit', 'Balance'],
+        ))->toBeTrue()
+        ->and($assembler->slicedRowsLookChopped([
+            ['01/04/2025 01', '/04/2025', '621', 'R P', 'ECOVERY', '30,000.00', '9', '0,46,057.06 DR'],
+            ['01/04/2025 01', '/04/2025', '621', 'G', 'ST', '5,400.00', '9', '0,51,457.06 DR'],
+            ['02/04/2025 02', '/04/2025', '621', 'N C', 'EFT', ',23,500.00', '8', '1,87,268.58 DR'],
+        ]))->toBeTrue();
 });
 
 it('assembles kotak-style numbered rows with spaced month dates', function () {

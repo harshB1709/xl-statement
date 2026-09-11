@@ -59,3 +59,28 @@ it('maps single amount with marker layout', function () {
 it('binds a portable pdf text extractor', function () {
     expect(app(PdfTextExtractor::class))->toBeInstanceOf(PreferPhpPdfTextExtractor::class);
 });
+
+it('keeps cbi poppler layout columns coherent instead of hallucinated slices', function () {
+    // Real CBI Poppler output uses a two-line header (Value/Date, Branch/Code, Cheque/Number).
+    $text = <<<'TXT'
+Central Bank of India
+Post Date Value      Branch Cheque Transaction Description                 Debit        Credit       Balance
+          Date       Code   Number
+01/04/2025 01/04/2025 621         RECOVERY OF PROCESSING CHARGES          30,000.00                 90,46,057.06 DR
+01/04/2025 01/04/2025 621         GST                                      5,400.00                 90,51,457.06 DR
+01/04/2025 01/04/2025 621         RTGS TGSHI LIGHT IMPEX                  10,00,000.00             80,51,457.06 DR
+02/04/2025 02/04/2025 621         IMPS P2A509207223435                                 88,000.00    69,63,768.58 DR
+02/04/2025 02/04/2025 621 006982  NEFT RBI                                             23,500.00    81,87,268.58 DR
+TXT;
+
+    $table = app(ExtractStatementTable::class)->fromExtractedText(
+        new ExtractedText([$text], 'cbi-poppler.pdf', 'poppler'),
+    );
+
+    expect($table->rows)->toHaveCount(5)
+        ->and($table->rows[0][0])->toBe('01/04/2025')
+        ->and($table->rows[0][1])->toContain('RECOVERY OF PROCESSING')
+        ->and($table->rows[0][1])->toStartWith('621')
+        ->and(implode(' | ', $table->rows[0]))->not->toMatch('/(?:^|\s|\|)\/\d{2}\//')
+        ->and(implode(' | ', $table->rows[0]))->not->toMatch('/(?:^|\s|\|),\d/');
+});

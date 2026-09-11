@@ -80,10 +80,11 @@ class ColumnBoundaryDetector
     private function isMultiWordHeader(string $combined): bool
     {
         $known = [
-            'value date', 'txn date', 'transaction date', 'val date',
+            'value date', 'txn date', 'transaction date', 'val date', 'post date',
             'cheque no', 'chq no', 'ref no', 'chq/ref no', 'chq / ref no',
             'withdrawal amt', 'deposit amt', 'closing balance', 'running balance',
-            'transaction details',
+            'transaction details', 'transaction description',
+            'branch code', 'cheque number',
         ];
 
         return in_array($combined, $known, true);

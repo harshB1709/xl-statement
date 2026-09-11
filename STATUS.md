@@ -5,7 +5,8 @@ Living handoff so you (or another agent) can switch tabs without losing context.
 **App (Herd):** http://xl-statement.test  
 **Git:** `main` → https://github.com/harshB1709/xl-statement.git
 
-Last updated: 2026-09-09 (NSIS branding + package.json patch)
+Last updated: 2026-09-11 (skip Export step; fix NativePHP detection)
+
 
 ---
 
@@ -67,6 +68,7 @@ Brew: `brew install poppler` → binary at `/opt/homebrew/bin/pdftotext`
 - Fixed-width slice from header when layout is clean.
 - **`DateLedRowAssembler`** when headers/columns are broken (common with smalot; also used after Poppler for some Kotak shapes).
 - Hardening already done for: glued dates, Indian amounts, DR/CR as **balance nature** (CBI), Kotak serial prefixes (`1 09 Sep 2025…`), named-month dates, statement-period false starts.
+- **CBI + Poppler “hallucination”:** two-line headers (`Value`/`Date`, `Branch`/`Code`, `Cheque`/`Number`) + bad fixed-width cuts. Merge continuation header lines; if slices still look chopped (`/04/2025`, `,23,500.00`), force `DateLedRowAssembler`.
 - Dates: format fallbacks + Carbon loose parse (`07 Sep 2025`, etc.).
 - Export: optional Excel-only Indian lakhs format (default off — Numbers.app breaks on `\,`).
 - Unlock UX: wrong password message; password passed through to Convert.

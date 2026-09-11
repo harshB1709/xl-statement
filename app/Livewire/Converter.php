@@ -250,7 +250,27 @@ class Converter extends Component
             return;
         }
 
-        $this->step = 3;
+        $this->step = 2;
+    }
+
+    public function downloadExcel(ConvertStatements $convertStatements): mixed
+    {
+        if ($this->isNative) {
+            $this->saveAs();
+
+            return null;
+        }
+
+        $this->prepareWebTempOutput();
+        $this->convert($convertStatements);
+
+        if ($this->resultPath === null || ! is_file($this->resultPath)) {
+            return null;
+        }
+
+        return response()
+            ->download($this->resultPath, basename($this->resultPath))
+            ->deleteFileAfterSend(true);
     }
 
     public function setActiveLayout(string $fingerprint): void
@@ -270,8 +290,14 @@ class Converter extends Component
 
     public function convert(ConvertStatements $convertStatements): void
     {
-        if (! $this->allLayoutsValid() || $this->outputName === '' || $this->outputDirectory === '') {
+        if (! $this->allLayoutsValid() || $this->outputName === '') {
             return;
+        }
+
+        if (! $this->isNative) {
+            $this->prepareWebTempOutput();
+        } elseif ($this->outputDirectory === '') {
+            $this->outputDirectory = $this->defaultOutputDirectory();
         }
 
         if (array_filter($this->exportColumns) === []) {
@@ -305,11 +331,6 @@ class Converter extends Component
             }
         }
 
-        $paths = array_map(static fn (array $file): string => $file['path'], array_filter(
-            $this->files,
-            static fn (array $file): bool => in_array($file['status'], ['mapped', 'table_found'], true) || isset($file['fingerprint']),
-        ));
-
         $paths = array_values(array_unique(array_map(
             static fn (array $file): string => $file['path'],
             array_filter($this->files, static fn (array $file): bool => ($file['fingerprint'] ?? null) !== null),
@@ -318,7 +339,7 @@ class Converter extends Component
         $pathLabels = [];
         $passwords = [];
 
-        foreach ($this->files as $index => $file) {
+        foreach ($this->files as $file) {
             if (($file['fingerprint'] ?? null) === null) {
                 continue;
             }
@@ -363,11 +384,11 @@ class Converter extends Component
 
             $this->resultPath = $result->outputPath;
             $this->resultMessage = sprintf(
-                'Saved %s · %d rows',
+                'Ready %s · %d rows',
                 basename($result->outputPath),
                 $result->transactionCount,
             );
-            $this->step = 3;
+            $this->step = 2;
         } catch (Throwable $exception) {
             $this->resultPath = null;
             $this->resultMessage = $exception->getMessage();
@@ -388,6 +409,10 @@ class Converter extends Component
             } catch (Throwable) {
                 $this->isNative = false;
             }
+        }
+
+        if (! is_file($this->resultPath)) {
+            return;
         }
 
         $this->redirect(route('exports.download', ['file' => basename($this->resultPath)]));
@@ -443,7 +468,15 @@ class Converter extends Component
 
     private function nativeDesktopAvailable(): bool
     {
-        return isset($_SERVER['NATIVEPHP']) || isset($_ENV['NATIVEPHP']);
+        foreach (['NATIVEPHP_RUNNING', 'NATIVEPHP'] as $key) {
+            $value = $_SERVER[$key] ?? $_ENV[$key] ?? getenv($key);
+
+            if ($value === true || $value === 1 || $value === '1' || $value === 'true') {
+                return true;
+            }
+        }
+
+        return (bool) config('nativephp-internal.running', false);
     }
 
     private function extractPending(): void
@@ -455,7 +488,7 @@ class Converter extends Component
         }
 
         if ($this->layouts !== [] && $this->allHaveProfiles()) {
-            $this->step = 3;
+            $this->step = 2;
         }
     }
 
@@ -607,7 +640,7 @@ class Converter extends Component
         );
     }
 
-    private function allLayoutsValid(): bool
+    public function allLayoutsValid(): bool
     {
         foreach ($this->layouts as $layout) {
             $targets = array_values($layout['targets']);
@@ -646,18 +679,59 @@ class Converter extends Component
         return rtrim($this->outputDirectory, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$name;
     }
 
+    private function prepareWebTempOutput(): void
+    {
+        $directory = storage_path('framework/tmp');
+        File::ensureDirectoryExists($directory);
+        $this->outputDirectory = $directory;
+    }
+
     private function defaultOutputDirectory(): string
     {
         if (! $this->isNative) {
-            $directory = storage_path('app/exports');
-            File::ensureDirectoryExists($directory);
+            $this->prepareWebTempOutput();
 
-            return $directory;
+            return $this->outputDirectory;
         }
 
-        $home = $_SERVER['HOME'] ?? $_SERVER['USERPROFILE'] ?? storage_path('app');
-        $downloads = $home.DIRECTORY_SEPARATOR.'Downloads';
+        foreach (['NATIVEPHP_DOWNLOADS_PATH', 'NATIVEPHP_USER_HOME_PATH'] as $key) {
+            $value = $_SERVER[$key] ?? $_ENV[$key] ?? getenv($key);
 
-        return File::isDirectory($downloads) ? $downloads : $home;
+            if (! is_string($value) || $value === '') {
+                continue;
+            }
+
+            if ($key === 'NATIVEPHP_DOWNLOADS_PATH' && File::isDirectory($value)) {
+                return $value;
+            }
+
+            if ($key === 'NATIVEPHP_USER_HOME_PATH') {
+                $downloads = rtrim($value, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'Downloads';
+
+                if (File::isDirectory($downloads)) {
+                    return $downloads;
+                }
+
+                if (File::isDirectory($value)) {
+                    return $value;
+                }
+            }
+        }
+
+        $home = $_SERVER['HOME'] ?? $_SERVER['USERPROFILE'] ?? null;
+
+        if (is_string($home) && $home !== '') {
+            $downloads = $home.DIRECTORY_SEPARATOR.'Downloads';
+
+            if (File::isDirectory($downloads)) {
+                return $downloads;
+            }
+
+            return $home;
+        }
+
+        $this->prepareWebTempOutput();
+
+        return $this->outputDirectory;
     }
 }
