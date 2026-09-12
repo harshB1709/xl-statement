@@ -4,6 +4,7 @@ namespace App\Services\Table;
 
 use App\Data\RawColumn;
 use App\Data\RawTable;
+use Carbon\CarbonImmutable;
 
 /**
  * Builds a clean RawTable from poorly aligned PDF text (common with smalot
@@ -158,7 +159,7 @@ class DateLedRowAssembler
      */
     public function shouldUse(int $slicedRowCount, int $dateLikeLineCount, array $headerCells = [], array $slicedRows = []): bool
     {
-        if ($dateLikeLineCount < 3) {
+        if ($dateLikeLineCount < 2) {
             return false;
         }
 
@@ -166,11 +167,46 @@ class DateLedRowAssembler
             return true;
         }
 
-        if ($this->slicedRowsLookChopped($slicedRows)) {
+        if ($this->slicedRowsLookChopped($slicedRows) || $this->slicedRowsLookMisaligned($slicedRows)) {
             return true;
         }
 
         return $slicedRowCount < max(3, (int) floor($dateLikeLineCount * 0.5));
+    }
+
+    /**
+     * Page-to-page Poppler column drift (Airtel/BOI) leaves "-" placeholders and
+     * credit+balance mashed into one cell — fixed-width slices are unreliable.
+     *
+     * @param  list<list<string>>  $rows
+     */
+    public function slicedRowsLookMisaligned(array $rows): bool
+    {
+        $checked = 0;
+        $bad = 0;
+
+        foreach (array_slice($rows, 0, 50) as $row) {
+            foreach ($row as $cell) {
+                $cell = trim((string) $cell);
+
+                if ($cell === '') {
+                    continue;
+                }
+
+                $checked++;
+
+                if (preg_match('/\d+\.\d{2}\s+-/', $cell) === 1 || preg_match('/(^|\s)-\s+\d+\.\d{2}/', $cell) === 1) {
+                    $bad++;
+                } elseif (preg_match('/\d+\.\d{2}\s+₹/', $cell) === 1) {
+                    $bad++;
+                } elseif (preg_match('/\d+\.\d{2}.{0,20}\d{1,3}(?:,\d{2,3})+\.\d{2}/', $cell) === 1) {
+                    // Two full money amounts jammed into one cell (credit+balance drift).
+                    $bad++;
+                }
+            }
+        }
+
+        return $checked >= 8 && $bad >= 3;
     }
 
     /**
@@ -208,6 +244,11 @@ class DateLedRowAssembler
             static fn (string $cell): string => strtolower(trim($cell)),
             $headerCells,
         );
+
+        // Tokeniser sometimes leaves a lone "/" from "CHQ / REF NO.".
+        if (in_array('/', $normalized, true)) {
+            return true;
+        }
 
         // Two-line CBI headers leave orphan first words when the second line
         // ("Date" / "Code" / "Number") is not merged into the boundary line.
@@ -335,19 +376,36 @@ class DateLedRowAssembler
             ? $amountLine
             : $amountLine.' '.$description;
         $amountBlob = preg_replace('/\b(?:DR|CR)\.?\b/i', ' ', $amountSource) ?? $amountSource;
-        [$amount, $balance] = $this->parseAmounts($amountBlob);
+
+        $dashColumns = $this->parseDashSeparatedAmounts($amountBlob);
+        if ($dashColumns !== null) {
+            [$debit, $credit, $balance] = $dashColumns;
+            $amount = $debit ?? $credit;
+            $marker = $debit !== null ? 'DR' : ($credit !== null ? 'CR' : $marker);
+        } else {
+            [$amount, $balance] = $this->parseAmounts($amountBlob);
+        }
 
         if ($amount === null && $balance === null) {
             return null;
         }
 
-        $cleanDescription = trim(preg_replace(
-            '/(?:'.$this->moneyPattern().')+(?:\d{0,4})?\s*$/',
-            '',
-            $description,
-        ) ?? $description);
+        $cleanDescription = $this->stripCurrencyMarkers($description);
+        // When amounts were captured from the same line, drop leftover money / "-" placeholders.
+        if ($amountLine !== '') {
+            $cleanDescription = preg_replace('/\s*(?:'.$this->moneyPattern().'|\s-\s|^-\s+|-\s*$)+\s*/', ' ', $cleanDescription) ?? $cleanDescription;
+        } else {
+            $cleanDescription = preg_replace(
+                '/(?:(?:₹|rs\.?|inr)\s*)?(?:'.$this->moneyPattern().')+(?:\d{0,4})?\s*$/iu',
+                '',
+                $cleanDescription,
+            ) ?? $cleanDescription;
+        }
+        $cleanDescription = trim(preg_replace('/\s+/', ' ', $cleanDescription) ?? $cleanDescription);
         $cleanDescription = trim(preg_replace('/\s*\b(?:DR|CR)\.?\s*$/i', '', $cleanDescription) ?? $cleanDescription);
         $cleanDescription = trim(preg_replace('/(?:^|\s)\d{4,8}$/', '', $cleanDescription) ?? $cleanDescription);
+        // Strip leading txn ids that DateLed left in the description blob.
+        $cleanDescription = trim(preg_replace('/^(?:[A-Z]{2,}\d[\w]*\s+)/', '', $cleanDescription) ?? $cleanDescription);
 
         if ($cleanDescription === '' || preg_match('/^(opening|closing|transaction total)/i', $cleanDescription) === 1) {
             return null;
@@ -370,11 +428,37 @@ class DateLedRowAssembler
     }
 
     /**
+     * Airtel-style columns use "-" for the empty debit/credit slot:
+     * "- 21.00 21.00" (credit) or "145.00 - 876.00" (debit).
+     *
+     * @return array{0: ?float, 1: ?float, 2: ?float}|null
+     */
+    private function parseDashSeparatedAmounts(string $text): ?array
+    {
+        $working = $this->stripCurrencyMarkers($text);
+        $money = $this->moneyPattern();
+
+        if (preg_match('/(?:^|[\s])-\s*('.$money.')\s+('.$money.')(?:\D|$)/', $working, $matches) === 1) {
+            return [null, (float) str_replace(',', '', $matches[1]), (float) str_replace(',', '', $matches[2])];
+        }
+
+        if (preg_match('/('.$money.')\s*-\s*('.$money.')(?:\D|$)/', $working, $matches) === 1) {
+            return [(float) str_replace(',', '', $matches[1]), null, (float) str_replace(',', '', $matches[2])];
+        }
+
+        return null;
+    }
+
+    /**
      * @param  list<list<string>>  $rows
      * @return list<list<string>>
      */
     private function classifyDebitCredit(array $rows): array
     {
+        if ($this->looksReverseChronological($rows)) {
+            return $this->classifyDebitCreditReverse($rows);
+        }
+
         $previousBalance = null;
 
         foreach ($rows as $index => $row) {
@@ -432,12 +516,115 @@ class DateLedRowAssembler
     }
 
     /**
+     * Newest-first statements: this row's amount explains the jump to the *next*
+     * (older) balance, not the jump from the previous newer row.
+     *
+     * @param  list<list<string>>  $rows
+     * @return list<list<string>>
+     */
+    private function classifyDebitCreditReverse(array $rows): array
+    {
+        $count = count($rows);
+
+        for ($index = 0; $index < $count; $index++) {
+            $debit = $rows[$index][2] !== '' ? (float) $rows[$index][2] : null;
+            $credit = $rows[$index][3] !== '' ? (float) $rows[$index][3] : null;
+            $balance = $rows[$index][4] !== '' ? (float) $rows[$index][4] : null;
+            $amount = $debit ?? $credit;
+
+            if ($amount === null || $balance === null) {
+                continue;
+            }
+
+            $isCredit = $credit !== null && $debit === null;
+            $nextBalance = null;
+
+            for ($next = $index + 1; $next < $count; $next++) {
+                if ($rows[$next][4] !== '') {
+                    $nextBalance = (float) $rows[$next][4];
+                    break;
+                }
+            }
+
+            if ($nextBalance !== null) {
+                $afterCredit = round($balance - $amount, 2);
+                $afterDebit = round($balance + $amount, 2);
+
+                if (abs($afterCredit - $nextBalance) <= 0.01) {
+                    $isCredit = true;
+                } elseif (abs($afterDebit - $nextBalance) <= 0.01) {
+                    $isCredit = false;
+                } elseif ($nextBalance < $balance) {
+                    $isCredit = true;
+                } elseif ($nextBalance > $balance) {
+                    $isCredit = false;
+                }
+            }
+
+            if ($isCredit) {
+                $rows[$index][2] = '';
+                $rows[$index][3] = number_format($amount, 2, '.', '');
+            } else {
+                $rows[$index][2] = number_format($amount, 2, '.', '');
+                $rows[$index][3] = '';
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  list<list<string>>  $rows
+     */
+    private function looksReverseChronological(array $rows): bool
+    {
+        $dates = [];
+
+        foreach ($rows as $row) {
+            $raw = trim((string) ($row[0] ?? ''));
+
+            if ($raw === '') {
+                continue;
+            }
+
+            try {
+                $dates[] = CarbonImmutable::parse($raw)->startOfDay();
+            } catch (\Throwable) {
+                continue;
+            }
+
+            if (count($dates) >= 12) {
+                break;
+            }
+        }
+
+        if (count($dates) < 3) {
+            return false;
+        }
+
+        $descending = 0;
+        $ascending = 0;
+
+        for ($index = 1; $index < count($dates); $index++) {
+            $cmp = $dates[$index] <=> $dates[$index - 1];
+
+            if ($cmp < 0) {
+                $descending++;
+            } elseif ($cmp > 0) {
+                $ascending++;
+            }
+        }
+
+        return $descending > $ascending;
+    }
+
+    /**
      * @return array{0: ?float, 1: ?float}
      */
     private function parseAmounts(string $text): array
     {
         $balance = null;
-        $working = $text;
+        $working = $this->stripCurrencyMarkers($text);
 
         if (preg_match_all('/(\d+)\.(\d{2})(\d{2,4})\b/', $working, $glued, PREG_SET_ORDER) > 0) {
             $last = $glued[array_key_last($glued)];
@@ -468,6 +655,11 @@ class DateLedRowAssembler
     private function moneyPattern(): string
     {
         return '(?:\d{1,3}(?:,\d{2,3})+\.\d{2}|\d+\.\d{2})';
+    }
+
+    private function stripCurrencyMarkers(string $text): string
+    {
+        return preg_replace('/(?:₹|(?<![a-z])rs\.?(?![a-z])|(?<![a-z])inr(?![a-z]))\s*/iu', '', $text) ?? $text;
     }
 
     private function datePattern(): string
@@ -648,7 +840,20 @@ class DateLedRowAssembler
             || str_contains($normalized, 'email id')
             || str_contains($normalized, 'phone no')
             || str_contains($normalized, 'nomination')
-            || str_contains($normalized, 'ckyc')
+            || str_contains($normalized, 'ckyc id')
+            || str_contains($normalized, 'airtel payments bank')
+            || str_contains($normalized, 'gst number')
+            || str_contains($normalized, 'help & support')
+            || str_contains($normalized, 'end of statement')
+            || str_contains($normalized, 'total credit')
+            || str_contains($normalized, 'total debit')
+            || str_contains($normalized, 'computer-generated')
+            || str_contains($normalized, 'computer generated')
+            || str_contains($normalized, 'wecare@')
+            || str_contains($normalized, 'deposit insurance')
+            || str_contains($normalized, 'found correct by you')
+            || str_contains($normalized, 'bank never asks')
+            || str_contains($normalized, 'do not share your atm')
             || str_contains($normalized, 'central bank of india')
             || preg_match('/^(tran date|transaction date|value date|particulars|debit|credit|balance|che|txn)/', $normalized) === 1
             || $this->isLegendDetail($line);

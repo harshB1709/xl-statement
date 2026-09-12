@@ -89,6 +89,10 @@ class ExtractStatementTable
                     continue;
                 }
 
+                if ($this->noiseFilter->isNoiseLine($line)) {
+                    continue;
+                }
+
                 if ($this->headerRowFinder->isContinuationLine($line)) {
                     continue;
                 }
@@ -145,7 +149,7 @@ class ExtractStatementTable
             );
         }
 
-        $bankName = $this->sniffBankName(implode("\n", $preamble)."\n".$extracted->fullText());
+        $bankName = $this->sniffBankName(implode("\n", $preamble)."\n".($extracted->pages[$header['page_index']] ?? ''));
 
         // Two-line headers (CBI Poppler: Value/Date, Branch/Code, Cheque/Number) rarely
         // align well enough for fixed-width slicing — prefer date-led assembly.
@@ -179,6 +183,14 @@ class ExtractStatementTable
     {
         if (preg_match('/\bKKBK\d{4,}/i', $preamble) === 1 || preg_match('/\bKotak Mahindra Bank\b/i', $preamble) === 1 || preg_match('/\bkotak\.bank\.in\b/i', $preamble) === 1) {
             return 'Kotak Mahindra Bank';
+        }
+
+        if (preg_match('/\bAirtel Payments Bank\b/i', $preamble) === 1 || preg_match('/\bairtelpayments\.bank\.in\b/i', $preamble) === 1) {
+            return 'Airtel Payments Bank';
+        }
+
+        if (preg_match('/\bBank of India\b/i', $preamble) === 1 || preg_match('/\bBKID\d{7}\b/', $preamble) === 1) {
+            return 'Bank of India';
         }
 
         if (preg_match('/\b(HDFC Bank|ICICI Bank|State Bank of India|Axis Bank|Yes Bank|IDFC FIRST Bank|Punjab National Bank|Bank of Baroda|Central Bank of India)\b/i', $preamble, $matches) === 1) {

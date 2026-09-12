@@ -18,21 +18,21 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         @livewireStyles
     </head>
-    <body class="min-h-screen font-sans text-ink antialiased">
-        <div class="mx-auto max-w-6xl px-4 py-8">
-            <header class="mb-8 flex items-start justify-between gap-4">
+    <body class="h-dvh overflow-hidden font-sans text-ink antialiased">
+        <div class="mx-auto flex h-full max-w-6xl flex-col px-4 pt-4 pb-4 sm:pt-5">
+            <header class="mb-5 flex shrink-0 items-start justify-between gap-4">
                 <div class="flex items-start gap-3">
                     <img
                         src="{{ asset('favicon.svg') }}"
                         alt=""
-                        width="48"
-                        height="48"
-                        class="mt-1 size-12 shrink-0 rounded-[14px] shadow-sm ring-1 ring-line"
+                        width="40"
+                        height="40"
+                        class="mt-0.5 size-10 shrink-0 rounded-[12px] shadow-sm ring-1 ring-line"
                     >
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Private · offline</p>
-                        <h1 class="mt-1 text-4xl font-semibold tracking-tight text-ink">XL Statement</h1>
-                        <p class="mt-2 max-w-md text-sm text-muted">PDF bank statements → clean Excel workbooks, on this machine.</p>
+                        <h1 class="mt-0.5 text-3xl font-semibold tracking-tight text-ink">XL Statement</h1>
+                        <p class="mt-1 max-w-md text-sm text-muted">PDF bank statements → clean Excel workbooks, on this machine.</p>
                     </div>
                 </div>
 
@@ -59,7 +59,9 @@
                 </button>
             </header>
 
-            {{ $slot }}
+            <div class="min-h-0 flex-1 overflow-hidden">
+                {{ $slot }}
+            </div>
         </div>
 
         @livewireScripts

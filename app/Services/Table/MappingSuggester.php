@@ -49,6 +49,9 @@ class MappingSuggester
     private function fromHeader(string $header): TargetField
     {
         return match (true) {
+            preg_match('/\b(sr|sl|s)\.?\s*no\.?\b/', $header) === 1,
+            $header === 'sr',
+            $header === 'no.' => TargetField::Ignore,
             str_contains($header, 'value date'), str_contains($header, 'val date') => TargetField::ValueDate,
             str_contains($header, 'date') => TargetField::Date,
             str_contains($header, 'narration'),
@@ -56,6 +59,8 @@ class MappingSuggester
             str_contains($header, 'particular'),
             str_contains($header, 'remark'),
             str_contains($header, 'detail') => TargetField::Description,
+            str_contains($header, 'transaction id'),
+            str_contains($header, 'txn id') => TargetField::Reference,
             str_contains($header, 'chq'),
             str_contains($header, 'cheque'),
             str_contains($header, 'ref'),
@@ -84,17 +89,22 @@ class MappingSuggester
         $dateHits = 0;
         $amountHits = 0;
         $markerHits = 0;
+        $serialHits = 0;
 
         foreach ($samples as $sample) {
+            $trimmed = trim($sample);
+
             if ($this->dateNormalizer->parse($sample, 'd/m/Y') !== null || $this->dateNormalizer->parse($sample, 'd-M-Y') !== null) {
                 $dateHits++;
             }
 
-            if ($this->indianAmount->parse($sample) !== null) {
+            if (preg_match('/^\d{1,4}$/', $trimmed) === 1) {
+                $serialHits++;
+            } elseif ($this->indianAmount->parse($sample) !== null) {
                 $amountHits++;
             }
 
-            if (preg_match('/^(cr|dr|c|d)\.?$/i', trim($sample)) === 1) {
+            if (preg_match('/^(cr|dr|c|d)\.?$/i', $trimmed) === 1) {
                 $markerHits++;
             }
         }
@@ -107,6 +117,11 @@ class MappingSuggester
 
         if ($dateHits / $count >= 0.8) {
             return TargetField::Date;
+        }
+
+        // Plain integers 1..N are row serials, not rupee amounts.
+        if ($serialHits / $count >= 0.8) {
+            return TargetField::Ignore;
         }
 
         if ($amountHits / $count >= 0.8) {

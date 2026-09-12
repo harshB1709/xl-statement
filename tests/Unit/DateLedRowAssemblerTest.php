@@ -182,3 +182,62 @@ TXT];
         ->and($table->rows[2][2])->toBe('4000.00')
         ->and($table->rows[2][4])->toBe('133060.64');
 });
+
+it('classifies dash-separated debit and credit columns', function () {
+    $pages = [<<<'TXT'
+Date Transaction ID Particulars Debit Credit Balance
+09-10-2025 PH510092196306987 CKYC_THANKS_REGISTRATION - 21.00 21.00
+10-10-2025 PH510101317184930 PAYMENT MADE VIA UPI 145.00 - 876.00
+11-10-2025 PH510111317184999 MONEY LOADED SUCCESSFULLY - 1000.00 1876.00
+TXT];
+
+    $table = (new DateLedRowAssembler)->assemble($pages, 'airtel.pdf', 'Airtel Payments Bank');
+
+    expect($table->rows)->toHaveCount(3)
+        ->and($table->rows[0][1])->toContain('CKYC_THANKS_REGISTRATION')
+        ->and($table->rows[0][1])->not->toContain('21.00')
+        ->and($table->rows[0][3])->toBe('21.00')
+        ->and($table->rows[1][2])->toBe('145.00')
+        ->and($table->rows[1][3])->toBe('')
+        ->and($table->rows[2][3])->toBe('1000.00');
+});
+
+it('classifies newest-first debit and credit from the next balance', function () {
+    $pages = [<<<'TXT'
+Sr No Date Remarks Debit Credit Balance
+1 28-03-2026 IO For 013253710000152 1586.00 ₹ 390,817.29
+2 28-03-2026 IO For 013243710001026 1648.00 ₹ 389,231.29
+3 22-11-2025 Int:2123.00 and TAX:0.00 2123.00 ₹ 166,935.29
+4 22-11-2025 TDS For 13253710000970 213.00 ₹ 164,812.29
+5 04-11-2025 SBInt.Pd 975.00 ₹ 165,025.29
+TXT];
+
+    $table = (new DateLedRowAssembler)->assemble($pages, 'boi.pdf', 'Bank of India');
+
+    expect($table->rows)->toHaveCount(5)
+        ->and($table->rows[0][3])->toBe('1586.00')
+        ->and($table->rows[2][3])->toBe('2123.00')
+        ->and($table->rows[3][2])->toBe('213.00')
+        ->and($table->rows[3][3])->toBe('')
+        ->and($table->rows[4][3])->toBe('975.00');
+});
+
+it('detects misaligned slices with dash placeholders or rupee-glued amounts', function () {
+    $assembler = new DateLedRowAssembler;
+
+    $dashRows = [];
+    $rupeeRows = [];
+
+    for ($i = 0; $i < 6; $i++) {
+        $dashRows[] = ['09-10-2025', 'PH'.$i, 'UPI', '40.00             -', '711.00'];
+        $rupeeRows[] = [(string) $i, '28-03-2026', 'IO For A', '', '1014.00                 ₹ 149,324.29'];
+    }
+
+    expect($assembler->slicedRowsLookMisaligned($dashRows))->toBeTrue()
+        ->and($assembler->slicedRowsLookMisaligned($rupeeRows))->toBeTrue()
+        ->and($assembler->slicedRowsLookMisaligned([
+            ['09-10-2025', 'PH1', 'UPI', '40.00', '', '711.00'],
+            ['10-10-2025', 'PH2', 'UPI', '50.00', '', '661.00'],
+            ['11-10-2025', 'PH3', 'UPI', '', '100.00', '761.00'],
+        ]))->toBeFalse();
+});

@@ -82,12 +82,15 @@ class ColumnBoundaryDetector
         $known = [
             'value date', 'txn date', 'transaction date', 'val date', 'post date',
             'cheque no', 'chq no', 'ref no', 'chq/ref no', 'chq / ref no',
+            'chq /', 'chq / ref', 'chq/ref',
             'withdrawal amt', 'deposit amt', 'closing balance', 'running balance',
-            'transaction details', 'transaction description',
+            'transaction details', 'transaction description', 'transaction id',
             'branch code', 'cheque number',
+            'sr no', 's.no', 's. no', 'sl no', 'sl. no', 's no',
+            'debit/credit', 'debit / credit',
         ];
 
-        return in_array($combined, $known, true);
+        return in_array(rtrim($combined, '.'), $known, true);
     }
 
     /**

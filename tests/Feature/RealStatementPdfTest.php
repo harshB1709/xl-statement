@@ -11,6 +11,8 @@ use App\Services\Table\MappingSuggester;
 dataset('real_statement_pdfs', [
     'axis' => ['axis.pdf', 20, 90.0],
     'idfc' => ['idfc.pdf', 20, 90.0],
+    'airtel' => ['airtel.pdf', 50, 90.0],
+    'boi' => ['boi.pdf', 20, 90.0],
 ]);
 
 it('extracts and reconciles real statement pdfs', function (string $filename, int $minRows, float $minReconcile) {

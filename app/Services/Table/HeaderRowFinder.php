@@ -63,13 +63,15 @@ class HeaderRowFinder
         }
 
         usort($candidates, function (array $a, array $b): int {
-            $occurrenceCmp = $b['occurrences'] <=> $a['occurrences'];
+            // Prefer real table headers (high synonym score) over footers that
+            // merely repeat on every page — e.g. Airtel "Registered Office…".
+            $scoreCmp = $b['best']['score'] <=> $a['best']['score'];
 
-            if ($occurrenceCmp !== 0) {
-                return $occurrenceCmp;
+            if ($scoreCmp !== 0) {
+                return $scoreCmp;
             }
 
-            return $b['best']['score'] <=> $a['best']['score'];
+            return $b['occurrences'] <=> $a['occurrences'];
         });
 
         return $candidates[0]['best'];
@@ -81,7 +83,7 @@ class HeaderRowFinder
         $score = 0;
 
         foreach ($this->synonyms as $synonym) {
-            if (str_contains($normalized, $synonym)) {
+            if ($this->containsSynonym($normalized, $synonym)) {
                 $score++;
             }
         }
@@ -189,5 +191,16 @@ class HeaderRowFinder
         $line = preg_replace('/\s+/', ' ', $line) ?? $line;
 
         return trim($line);
+    }
+
+    /**
+     * Match header synonyms as whole tokens/phrases so short ones like "dr"/"cr"
+     * do not hit inside "address" / "crescent".
+     */
+    private function containsSynonym(string $normalizedLine, string $synonym): bool
+    {
+        $quoted = preg_quote($synonym, '/');
+
+        return preg_match('/(?:^|[^a-z0-9])'.$quoted.'(?:[^a-z0-9]|$)/', $normalizedLine) === 1;
     }
 }

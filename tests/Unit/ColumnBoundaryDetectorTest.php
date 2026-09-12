@@ -17,3 +17,24 @@ it('merges cbi-style multi-word headers for poppler layout', function () {
         ->and($headers)->not->toContain('Post')
         ->and($headers)->not->toContain('Transaction');
 });
+
+it('merges sr no and chq slash ref headers', function () {
+    $detector = new ColumnBoundaryDetector;
+
+    $boi = $detector->detect(
+        ' Sr No       Date            Remarks                                       Debit                Credit               Balance',
+        [],
+    );
+    $kotak = $detector->detect(
+        ' #   TRANSACTION DATE       VALUE DATE    TRANSACTION DETAILS              CHQ / REF NO.        DEBIT/CREDIT(₹)       BALANCE(₹)',
+        [],
+    );
+
+    $boiHeaders = array_map(static fn (array $b): string => $b['header_text'], $boi);
+    $kotakHeaders = array_map(static fn (array $b): string => $b['header_text'], $kotak);
+
+    expect($boiHeaders)->toContain('Sr No')
+        ->and($boiHeaders)->not->toContain('Sr')
+        ->and($kotakHeaders)->toContain('CHQ / REF NO.')
+        ->and($kotakHeaders)->not->toContain('/');
+});

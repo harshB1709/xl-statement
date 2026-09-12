@@ -45,6 +45,10 @@ class Converter extends Component
 
     public string $activeFingerprint = '';
 
+    public int $previewPage = 1;
+
+    public int $previewPerPage = 12;
+
     public string $outputName = '';
 
     public string $outputDirectory = '';
@@ -217,9 +221,100 @@ class Converter extends Component
         $this->files = [];
         $this->layouts = [];
         $this->activeFingerprint = '';
+        $this->previewPage = 1;
         $this->step = 1;
         $this->resultPath = null;
         $this->resultMessage = null;
+        $this->uploads = [];
+    }
+
+    public function startOver(): void
+    {
+        $this->clearAll();
+    }
+
+    public function previousPreviewPage(): void
+    {
+        $this->previewPage--;
+        $this->clampPreviewPage();
+    }
+
+    public function nextPreviewPage(): void
+    {
+        $this->previewPage++;
+        $this->clampPreviewPage();
+    }
+
+    /**
+     * @return list<list<string>>
+     */
+    public function previewRows(): array
+    {
+        $rows = $this->activePreviewRows();
+        $offset = max(0, ($this->previewPage - 1) * $this->previewPerPage);
+
+        return array_values(array_slice($rows, $offset, $this->previewPerPage));
+    }
+
+    public function previewRowCount(): int
+    {
+        return count($this->activePreviewRows());
+    }
+
+    public function previewPageCount(): int
+    {
+        $total = $this->previewRowCount();
+
+        if ($total === 0) {
+            return 1;
+        }
+
+        return (int) max(1, (int) ceil($total / $this->previewPerPage));
+    }
+
+    public function previewRangeLabel(): string
+    {
+        $total = $this->previewRowCount();
+
+        if ($total === 0) {
+            return '0 of 0';
+        }
+
+        $from = (($this->previewPage - 1) * $this->previewPerPage) + 1;
+        $to = min($total, $this->previewPage * $this->previewPerPage);
+
+        return $from.'–'.$to.' of '.$total;
+    }
+
+    /**
+     * @return list<list<string>>
+     */
+    private function activePreviewRows(): array
+    {
+        if ($this->activeFingerprint === '' || ! isset($this->layouts[$this->activeFingerprint])) {
+            return [];
+        }
+
+        $layout = $this->layouts[$this->activeFingerprint];
+
+        if (isset($layout['raw_table']['rows']) && is_array($layout['raw_table']['rows'])) {
+            return $layout['raw_table']['rows'];
+        }
+
+        return $layout['sample_rows'] ?? [];
+    }
+
+    private function clampPreviewPage(): void
+    {
+        $pageCount = $this->previewPageCount();
+
+        if ($this->previewPage > $pageCount) {
+            $this->previewPage = $pageCount;
+        }
+
+        if ($this->previewPage < 1) {
+            $this->previewPage = 1;
+        }
     }
 
     public function unlock(int $index): void
@@ -240,6 +335,7 @@ class Converter extends Component
         }
 
         $this->activeFingerprint = array_key_first($this->layouts) ?: '';
+        $this->previewPage = 1;
         $this->refreshActiveLayoutStats();
         $this->step = 2;
     }
@@ -280,6 +376,7 @@ class Converter extends Component
         }
 
         $this->activeFingerprint = $fingerprint;
+        $this->previewPage = 1;
         $this->refreshActiveLayoutStats();
     }
 
@@ -589,7 +686,7 @@ class Converter extends Component
 
     private function refreshLayoutStats(string $fingerprint): void
     {
-        if (! isset($this->layouts[$fingerprint]['raw_table'])) {
+        if (! isset($this->layouts[$fingerprint]['raw_table']['layoutFingerprint'])) {
             return;
         }
 

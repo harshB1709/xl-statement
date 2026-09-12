@@ -1,23 +1,59 @@
-<div class="space-y-6">
-    <nav class="flex flex-wrap gap-2 text-sm">
-        @foreach ([1 => 'Files', 2 => 'Map columns'] as $number => $label)
-            <button
-                type="button"
-                wire:click="$set('step', {{ $number }})"
-                @class([
-                    'chip',
-                    'chip-active' => $step === $number,
-                    'chip-idle' => $step !== $number,
-                ])
-            >
-                {{ $number }}. {{ $label }}
+<div @class([
+    'min-h-0',
+    'h-full overflow-y-auto' => $step === 1,
+    'flex h-full flex-col overflow-hidden' => $step === 2,
+])>
+    <div @class([
+        'grid shrink-0 items-center gap-3 px-0.5 pt-1',
+        'grid-cols-[1fr_auto]' => $step !== 2,
+        'grid-cols-[1fr_auto_1fr]' => $step === 2,
+    ])>
+        <nav class="flex flex-wrap gap-2 text-sm justify-self-start">
+            @foreach ([1 => 'Files', 2 => 'Map columns'] as $number => $label)
+                <button
+                    type="button"
+                    wire:click="$set('step', {{ $number }})"
+                    @class([
+                        'chip',
+                        'chip-active' => $step === $number,
+                        'chip-idle' => $step !== $number,
+                    ])
+                >
+                    {{ $number }}. {{ $label }}
+                </button>
+            @endforeach
+        </nav>
+
+        @if ($step === 2 && $layouts !== [])
+            <div class="flex flex-wrap justify-center gap-2 justify-self-center">
+                @foreach ($layouts as $fingerprint => $layout)
+                    <button
+                        type="button"
+                        wire:click="setActiveLayout('{{ $fingerprint }}')"
+                        @class([
+                            'chip',
+                            'chip-active' => $activeFingerprint === $fingerprint,
+                            'chip-idle' => $activeFingerprint !== $fingerprint,
+                        ])
+                    >
+                        {{ $layout['name'] }} · {{ count($layout['file_paths']) }} file(s)
+                    </button>
+                @endforeach
+            </div>
+        @elseif ($step === 2)
+            <div></div>
+        @endif
+
+        @if ($step === 2)
+            <button wire:click="startOver" type="button" class="btn-secondary justify-self-end shrink-0 !px-3 !py-1.5 text-sm">
+                ← Start over
             </button>
-        @endforeach
-    </nav>
+        @endif
+    </div>
 
     @if ($resultMessage)
         <div @class([
-            'rounded-xl px-4 py-3 text-sm ring-1',
+            'mt-3 shrink-0 rounded-xl px-4 py-3 text-sm ring-1',
             'bg-ok-soft text-ok ring-ok-line' => $resultPath,
             'bg-danger-soft text-danger ring-danger-line' => ! $resultPath,
         ])>
@@ -36,7 +72,7 @@
     @endif
 
     @if ($step === 1)
-        <section class="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <section class="mt-4 grid gap-6 pb-6 lg:grid-cols-[1.2fr_0.8fr]">
             <div class="space-y-4">
                 <div class="rounded-2xl border border-dashed border-line-strong bg-surface p-8 text-center">
                     <p class="text-lg font-medium text-ink">Drop PDF statements here</p>
@@ -94,7 +130,7 @@
                 </div>
             </div>
 
-            <div class="panel p-5">
+            <div class="panel h-fit p-5">
                 <h2 class="font-semibold text-ink">Next</h2>
                 <p class="mt-2 text-sm text-muted">Extract tables, then map each unique layout once. Saved mappings are reused automatically.</p>
                 <button
@@ -110,138 +146,155 @@
     @endif
 
     @if ($step === 2)
-        <section class="space-y-4">
-            <div class="flex flex-wrap gap-2">
-                @foreach ($layouts as $fingerprint => $layout)
-                    <button
-                        type="button"
-                        wire:click="setActiveLayout('{{ $fingerprint }}')"
-                        @class([
-                            'chip',
-                            'chip-active' => $activeFingerprint === $fingerprint,
-                            'chip-idle' => $activeFingerprint !== $fingerprint,
-                        ])
-                    >
-                        {{ $layout['name'] }} · {{ count($layout['file_paths']) }} file(s)
-                    </button>
-                @endforeach
-            </div>
-
+        <section class="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
             @if ($activeFingerprint && isset($layouts[$activeFingerprint]))
                 @php($layout = $layouts[$activeFingerprint])
-                <div class="grid gap-4 lg:grid-cols-[1fr_280px]">
-                    <div class="panel overflow-auto">
-                        <div class="border-b border-line px-4 py-3">
-                            <input wire:model.live="layouts.{{ $activeFingerprint }}.name" type="text" class="field w-full font-medium">
+                <div class="grid min-h-0 flex-1 overflow-hidden lg:grid-cols-[1fr_280px] lg:divide-x lg:divide-line">
+                    <div class="flex min-h-0 flex-col overflow-hidden">
+                        <div class="flex shrink-0 flex-wrap items-center gap-3 border-b border-line px-4 py-3">
+                            <input wire:model.live="layouts.{{ $activeFingerprint }}.name" type="text" class="field min-w-0 flex-1 font-medium">
+                            <div class="flex items-center gap-2 text-sm text-muted">
+                                <button
+                                    type="button"
+                                    wire:click="previousPreviewPage"
+                                    class="inline-flex size-8 items-center justify-center rounded-lg ring-1 ring-line transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+                                    @disabled($previewPage <= 1)
+                                    aria-label="Previous rows"
+                                >
+                                    ‹
+                                </button>
+                                <span class="min-w-28 text-center tabular-nums">{{ $this->previewRangeLabel() }}</span>
+                                <button
+                                    type="button"
+                                    wire:click="nextPreviewPage"
+                                    class="inline-flex size-8 items-center justify-center rounded-lg ring-1 ring-line transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+                                    @disabled($previewPage >= $this->previewPageCount())
+                                    aria-label="Next rows"
+                                >
+                                    ›
+                                </button>
+                            </div>
                         </div>
-                        <table class="min-w-full text-left text-sm">
-                            <thead class="bg-surface-2">
-                                <tr>
-                                    @foreach ($layout['header_cells'] as $columnIndex => $header)
-                                        <th class="px-3 py-3 align-bottom">
-                                            <select wire:model.live="layouts.{{ $activeFingerprint }}.targets.{{ $columnIndex }}" class="field mb-2 w-full !rounded-lg !px-2 !py-1.5 text-xs">
-                                                @foreach ($this->targetOptions() as $value => $label)
-                                                    <option value="{{ $value }}">{{ $label }}</option>
-                                                @endforeach
-                                            </select>
-                                            <div class="font-medium text-ink">{{ $header }}</div>
-                                        </th>
-                                    @endforeach
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach ($layout['sample_rows'] as $row)
-                                    <tr class="border-t border-line">
-                                        @foreach ($row as $cell)
-                                            <td class="max-w-56 truncate px-3 py-2 text-muted" title="{{ $cell }}">{{ $cell }}</td>
+                        <div class="min-h-0 flex-1 overflow-auto">
+                            <table class="min-w-full text-left text-sm">
+                                <thead class="sticky top-0 z-10 bg-surface-2">
+                                    <tr>
+                                        @foreach ($layout['header_cells'] as $columnIndex => $header)
+                                            <th class="px-3 py-3 align-bottom">
+                                                <select wire:model.live="layouts.{{ $activeFingerprint }}.targets.{{ $columnIndex }}" class="field mb-2 w-full !rounded-lg !px-2 !py-1.5 text-xs">
+                                                    @foreach ($this->targetOptions() as $value => $label)
+                                                        <option value="{{ $value }}">{{ $label }}</option>
+                                                    @endforeach
+                                                </select>
+                                                <div class="font-medium text-ink">{{ $header }}</div>
+                                            </th>
                                         @endforeach
                                     </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    @forelse ($this->previewRows() as $row)
+                                        <tr class="border-t border-line">
+                                            @foreach ($row as $cell)
+                                                <td class="max-w-56 truncate px-3 py-2 text-muted" title="{{ $cell }}">{{ $cell }}</td>
+                                            @endforeach
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="{{ max(1, count($layout['header_cells'])) }}" class="px-3 py-8 text-center text-muted">
+                                                No extracted rows to preview.
+                                            </td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
-                    <aside class="panel space-y-4 p-4">
-                        <div>
-                            <label class="text-xs font-medium uppercase tracking-wide text-muted">Date format</label>
-                            <select wire:model.live="layouts.{{ $activeFingerprint }}.date_format" class="field mt-1 w-full">
-                                <option value="d/m/Y">dd/mm/yyyy</option>
-                                <option value="d-m-Y">dd-mm-yyyy</option>
-                                <option value="d-M-Y">dd-Mmm-yyyy</option>
-                                <option value="Y-m-d">yyyy-mm-dd</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-xs font-medium uppercase tracking-wide text-muted">Amount style</label>
-                            <select wire:model.live="layouts.{{ $activeFingerprint }}.amount_style" class="field mt-1 w-full">
-                                <option value="separate_dr_cr">Separate Debit / Credit</option>
-                                <option value="single_with_marker">Amount + Dr/Cr</option>
-                                <option value="signed_single">Signed amount</option>
-                            </select>
-                        </div>
-                        <div class="rounded-xl bg-surface-2 p-3 text-sm text-ink">
-                            <p><span class="font-medium">{{ $layout['transaction_count'] }}</span> transactions</p>
-                            <p class="mt-1 text-muted">Balance reconciles on <span class="font-medium text-ink">{{ $layout['reconciliation'] }}%</span></p>
-                            <p class="mt-1 text-muted">Extracted with <span class="font-medium text-ink">{{ $layout['text_engine'] ?? 'unknown' }}</span></p>
-                        </div>
-                        @if ($layout['warnings'] !== [])
-                            <div class="max-h-40 overflow-auto rounded-xl bg-warn-soft p-3 text-xs text-warn ring-1 ring-warn-line">
-                                @foreach (array_slice($layout['warnings'], 0, 8) as $warning)
-                                    <p class="mb-1">{{ $warning }}</p>
-                                @endforeach
-                            </div>
-                        @endif
-                        <label class="flex items-center gap-2 text-sm text-ink">
-                            <input wire:model="saveProfiles" type="checkbox" class="rounded border-line text-accent focus:ring-accent">
-                            Save as profile
-                        </label>
-
-                        <div>
-                            <label class="text-xs font-medium uppercase tracking-wide text-muted">File name</label>
-                            <input wire:model="outputName" type="text" class="field mt-1 w-full">
-                        </div>
-
-                        <details class="rounded-xl bg-surface-2 p-3 text-sm" open>
-                            <summary class="cursor-pointer font-medium text-ink">Columns in Excel</summary>
-                            <div class="mt-3 grid grid-cols-2 gap-2 text-ink">
-                                @foreach ([
-                                    'date' => 'Date',
-                                    'value_date' => 'Value Date',
-                                    'description' => 'Description',
-                                    'reference' => 'Ref / Cheque',
-                                    'debit' => 'Debit',
-                                    'credit' => 'Credit',
-                                    'balance' => 'Balance',
-                                    'bank' => 'Bank',
-                                    'source_file' => 'Source file',
-                                    'page' => 'Page',
-                                ] as $key => $label)
-                                    <label class="flex items-center gap-2">
-                                        <input wire:model="exportColumns.{{ $key }}" type="checkbox" class="rounded border-line text-accent focus:ring-accent">
-                                        {{ $label }}
-                                    </label>
-                                @endforeach
-                            </div>
-                        </details>
-
-                        <details class="rounded-xl bg-surface-2 p-3 text-sm">
-                            <summary class="cursor-pointer font-medium text-ink">Excel options</summary>
-                            <div class="mt-3 grid gap-2 text-ink">
-                                <label class="flex items-center gap-2"><input wire:model="indianFormat" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Indian lakhs/crores</label>
-                                <label class="flex items-center gap-2"><input wire:model="mergeIntoOneSheet" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Merge into one sheet</label>
-                                <label class="flex items-center gap-2"><input wire:model="includeSummary" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Include Summary sheet</label>
-                                <label class="flex items-center gap-2"><input wire:model="sortByDate" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Sort by date</label>
-                                <select wire:model="excelDateFormat" class="field">
-                                    <option value="dd-mm-yyyy">dd-mm-yyyy</option>
-                                    <option value="dd-mmm-yyyy">dd-mmm-yyyy</option>
-                                    <option value="yyyy-mm-dd">yyyy-mm-dd</option>
+                    <aside class="flex min-h-0 flex-col overflow-hidden border-t border-line lg:border-t-0">
+                        <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+                            <div>
+                                <label class="text-xs font-medium uppercase tracking-wide text-muted">Date format</label>
+                                <select wire:model.live="layouts.{{ $activeFingerprint }}.date_format" class="field mt-1 w-full">
+                                    <option value="d/m/Y">dd/mm/yyyy</option>
+                                    <option value="d-m-Y">dd-mm-yyyy</option>
+                                    <option value="d-M-Y">dd-Mmm-yyyy</option>
+                                    <option value="Y-m-d">yyyy-mm-dd</option>
                                 </select>
                             </div>
-                        </details>
+                            <div>
+                                <label class="text-xs font-medium uppercase tracking-wide text-muted">Amount style</label>
+                                <select wire:model.live="layouts.{{ $activeFingerprint }}.amount_style" class="field mt-1 w-full">
+                                    <option value="separate_dr_cr">Separate Debit / Credit</option>
+                                    <option value="single_with_marker">Amount + Dr/Cr</option>
+                                    <option value="signed_single">Signed amount</option>
+                                </select>
+                            </div>
+                            <div class="rounded-xl bg-surface-2 p-3 text-sm text-ink">
+                                <p><span class="font-medium">{{ $layout['transaction_count'] }}</span> transactions</p>
+                                <p class="mt-1 text-muted">Balance reconciles on <span class="font-medium text-ink">{{ $layout['reconciliation'] }}%</span></p>
+                                <p class="mt-1 text-muted">Extracted with <span class="font-medium text-ink">{{ $layout['text_engine'] ?? 'unknown' }}</span></p>
+                            </div>
+                            @if ($layout['warnings'] !== [])
+                                <div class="max-h-28 overflow-auto rounded-xl bg-warn-soft p-3 text-xs text-warn ring-1 ring-warn-line">
+                                    @foreach (array_slice($layout['warnings'], 0, 8) as $warning)
+                                        <p class="mb-1">{{ $warning }}</p>
+                                    @endforeach
+                                </div>
+                            @endif
+                            <label class="flex items-center gap-2 text-sm text-ink">
+                                <input wire:model="saveProfiles" type="checkbox" class="rounded border-line text-accent focus:ring-accent">
+                                Save as profile
+                            </label>
 
-                        <button wire:click="downloadExcel" type="button" class="btn-primary w-full" @disabled(! $this->allLayoutsValid())>
-                            {{ $isNative ? 'Save Excel…' : 'Download Excel' }}
-                        </button>
+                            <div>
+                                <label class="text-xs font-medium uppercase tracking-wide text-muted">File name</label>
+                                <input wire:model="outputName" type="text" class="field mt-1 w-full">
+                            </div>
+
+                            <details class="rounded-xl bg-surface-2 p-3 text-sm">
+                                <summary class="cursor-pointer font-medium text-ink">Columns in Excel</summary>
+                                <div class="mt-3 grid grid-cols-2 gap-2 text-ink">
+                                    @foreach ([
+                                        'date' => 'Date',
+                                        'value_date' => 'Value Date',
+                                        'description' => 'Description',
+                                        'reference' => 'Ref / Cheque',
+                                        'debit' => 'Debit',
+                                        'credit' => 'Credit',
+                                        'balance' => 'Balance',
+                                        'bank' => 'Bank',
+                                        'source_file' => 'Source file',
+                                        'page' => 'Page',
+                                    ] as $key => $label)
+                                        <label class="flex items-center gap-2">
+                                            <input wire:model="exportColumns.{{ $key }}" type="checkbox" class="rounded border-line text-accent focus:ring-accent">
+                                            {{ $label }}
+                                        </label>
+                                    @endforeach
+                                </div>
+                            </details>
+
+                            <details class="rounded-xl bg-surface-2 p-3 text-sm">
+                                <summary class="cursor-pointer font-medium text-ink">Excel options</summary>
+                                <div class="mt-3 grid gap-2 text-ink">
+                                    <label class="flex items-center gap-2"><input wire:model="indianFormat" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Indian lakhs/crores</label>
+                                    <label class="flex items-center gap-2"><input wire:model="mergeIntoOneSheet" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Merge into one sheet</label>
+                                    <label class="flex items-center gap-2"><input wire:model="includeSummary" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Include Summary sheet</label>
+                                    <label class="flex items-center gap-2"><input wire:model="sortByDate" type="checkbox" class="rounded border-line text-accent focus:ring-accent"> Sort by date</label>
+                                    <select wire:model="excelDateFormat" class="field">
+                                        <option value="dd-mm-yyyy">dd-mm-yyyy</option>
+                                        <option value="dd-mmm-yyyy">dd-mmm-yyyy</option>
+                                        <option value="yyyy-mm-dd">yyyy-mm-dd</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
+
+                        <div class="shrink-0 border-t border-line p-4">
+                            <button wire:click="downloadExcel" type="button" class="btn-primary w-full" @disabled(! $this->allLayoutsValid())>
+                                {{ $isNative ? 'Save Excel…' : 'Download Excel' }}
+                            </button>
+                        </div>
                     </aside>
                 </div>
             @endif

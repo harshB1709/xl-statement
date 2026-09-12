@@ -117,7 +117,7 @@
     }
 
     .btn-secondary {
-        @apply inline-flex items-center justify-center rounded-xl bg-surface px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line transition hover:bg-surface-2;
+        @apply inline-flex items-center justify-center rounded-xl bg-surface px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-inset ring-line transition hover:bg-surface-2;
     }
 
     .btn-ghost {
@@ -141,6 +141,6 @@
     }
 
     .chip-idle {
-        @apply bg-surface text-muted ring-1 ring-line hover:text-ink;
+        @apply bg-surface text-muted ring-1 ring-inset ring-line hover:text-ink;
     }
 }

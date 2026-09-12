@@ -20,14 +20,19 @@ class BalanceReconciler
             ];
         }
 
-        $normal = $this->score($transactions, false);
-        $swapped = $this->score($transactions, true);
+        $forward = $this->score($transactions, false, false);
+        $reverse = $this->score($transactions, false, true);
+        $normal = $forward['match_percent'] >= $reverse['match_percent'] ? $forward : $reverse;
+
+        $swappedForward = $this->score($transactions, true, false);
+        $swappedReverse = $this->score($transactions, true, true);
+        $swappedBest = max($swappedForward['match_percent'], $swappedReverse['match_percent']);
 
         return [
             'match_percent' => $normal['match_percent'],
             'mismatched_indexes' => $normal['mismatched_indexes'],
-            'swap_suggested' => $swapped['match_percent'] >= 95.0
-                && $swapped['match_percent'] > $normal['match_percent'] + 5,
+            'swap_suggested' => $swappedBest >= 95.0
+                && $swappedBest > $normal['match_percent'] + 5,
         ];
     }
 
@@ -35,21 +40,17 @@ class BalanceReconciler
      * @param  list<Transaction>  $transactions
      * @return array{match_percent: float, mismatched_indexes: list<int>}
      */
-    private function score(array $transactions, bool $swapDebitCredit): array
+    private function score(array $transactions, bool $swapDebitCredit, bool $reverseChronological): array
     {
         $mismatched = [];
         $checked = 0;
         $matched = 0;
         $previousBalance = null;
+        $previousDebit = 0.0;
+        $previousCredit = 0.0;
 
         foreach ($transactions as $index => $transaction) {
             if ($transaction->balance === null) {
-                continue;
-            }
-
-            if ($previousBalance === null) {
-                $previousBalance = $transaction->balance;
-
                 continue;
             }
 
@@ -60,7 +61,20 @@ class BalanceReconciler
                 [$debit, $credit] = [$credit, $debit];
             }
 
-            $expected = round($previousBalance + $credit - $debit, 2);
+            if ($previousBalance === null) {
+                $previousBalance = $transaction->balance;
+                $previousDebit = $debit;
+                $previousCredit = $credit;
+
+                continue;
+            }
+
+            // Forward: apply this row's txn to the previous balance.
+            // Reverse (newest→oldest): the balance drop equals the *previous*
+            // (newer) txn being undone, not the current older row's amount.
+            $expected = $reverseChronological
+                ? round($previousBalance - $previousCredit + $previousDebit, 2)
+                : round($previousBalance + $credit - $debit, 2);
             $checked++;
 
             if (abs($expected - $transaction->balance) <= 0.01) {
@@ -70,6 +84,8 @@ class BalanceReconciler
             }
 
             $previousBalance = $transaction->balance;
+            $previousDebit = $debit;
+            $previousCredit = $credit;
         }
 
         return [
