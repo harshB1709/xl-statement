@@ -29,6 +29,25 @@ it('detects dd/mm format from samples', function () {
         ->and($result['dates'][0]?->toDateString())->toBe('2025-01-13');
 });
 
+it('parses two-digit years as twenty-first century', function () {
+    $normalizer = new DateNormalizer;
+
+    expect($normalizer->parse('10/10/18', 'd/m/Y')?->toDateString())->toBe('2018-10-10')
+        ->and($normalizer->parse('02/06/18', 'd/m/y')?->toDateString())->toBe('2018-06-02');
+});
+
+it('detects two-digit dd/mm/yy samples instead of year 0018', function () {
+    $result = (new DateNormalizer)->detectFormat([
+        '02/06/18',
+        '03/06/18',
+        '10/10/18',
+    ]);
+
+    expect($result['format'])->toBe('d/m/y')
+        ->and($result['dates'][0]?->toDateString())->toBe('2018-06-02')
+        ->and($result['dates'][2]?->toDateString())->toBe('2018-10-10');
+});
+
 it('detects spaced month-name dates', function () {
     $result = (new DateNormalizer)->detectFormat([
         '07 Sep 2025',

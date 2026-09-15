@@ -241,3 +241,164 @@ it('detects misaligned slices with dash placeholders or rupee-glued amounts', fu
             ['11-10-2025', 'PH3', 'UPI', '', '100.00', '761.00'],
         ]))->toBeFalse();
 });
+
+it('detects balance fragments and glued year cuts as chopped slices', function () {
+    $assembler = new DateLedRowAssembler;
+
+    $rows = [];
+
+    for ($i = 0; $i < 6; $i++) {
+        $rows[] = ['08-04-2023 18:49:39 09', 'Apr 2023', 'UPI/DR', '13,000.00 023', '7,536', '.55'];
+    }
+
+    expect($assembler->slicedRowsLookChopped($rows))->toBeTrue()
+        ->and($assembler->shouldUse(178, 337, ['Txn Date', 'Value Date', 'Description', 'Debit', 'Credit', 'Balance'], $rows))->toBeTrue();
+});
+
+it('prefers date-led for credit-card DATE & TIME amount headers', function () {
+    $assembler = new DateLedRowAssembler;
+
+    expect($assembler->headersLookLikeCreditCardAmount([
+        'DATE', '&', 'TIME', 'TRANSACTION DESCRIPTION', 'AMOUNT', 'PI',
+    ]))->toBeTrue()
+        ->and($assembler->headersLookBroken(['DATE', '&', 'TIME', 'TRANSACTION DESCRIPTION', 'AMOUNT', 'PI']))->toBeTrue()
+        ->and($assembler->shouldUse(25, 36, ['DATE', '&', 'TIME', 'TRANSACTION DESCRIPTION', 'AMOUNT', 'PI'], []))->toBeTrue();
+});
+
+it('assembles hdfc credit-card datetime rows with signed C amounts', function () {
+    $pages = [<<<'TXT'
+Domestic Transactions
+DATE & TIME                             TRANSACTION DESCRIPTION                                                                            AMOUNT          PI
+Harsh Bachawat             [CKYC ID : 20030853292546 ]
+15/06/2026| 00:00                       5% Swiggy Cashback                                                                                + C 112.42       l
+20/06/2026| 16:26               EMI     PYU*Flipkart PaymenBangalore                                                                      C 30,842.00      l
+22/06/2026| 00:00                       1% Swiggy CashBack                                                                                + C 308.42       l
+29/06/2026| 00:00                       1.75% on all DCC Transaction (Ref# ST261810084000011711508)                                         C 132.80       l
+29/06/2026| 03:50                       BPPY CC PAYMENT AS0161800350449z1eb                                                               + C 2,948.00      l
+International Transactions
+DATE & TIME                              TRANSACTION DESCRIPTION                                                                                AMOUNT       PI
+16/06/2026 | 17:07                       VNPAY*EVISAVIETNAHA NOI                                                VND 677,928                     C 2,447.52   l
+14/07/2026 | 00:00                       CONSOLIDATED FCY MARKUP FEE (Ref# MT261890076000010005929)                                               C 402.10   l
+Cash Back Summary
+SR NO.               TRANSACTION                                                                                                                                                                          AMOUNT
+1                    1% Swiggy CashBack                                                                                                                                                                     C 500.00
+TXT];
+
+    $table = (new DateLedRowAssembler)->assemble($pages, 'hdfc-cc.pdf', 'HDFC Bank');
+
+    expect($table->rows)->toHaveCount(7)
+        ->and($table->rows[0][0])->toBe('15/06/2026')
+        ->and($table->rows[0][1])->toBe('5% Swiggy Cashback')
+        ->and($table->rows[0][3])->toBe('112.42')
+        ->and($table->rows[1][1])->toBe('PYU*Flipkart PaymenBangalore')
+        ->and($table->rows[1][2])->toBe('30842.00')
+        ->and($table->rows[3][1])->toStartWith('1.75% on all DCC Transaction')
+        ->and($table->rows[3][2])->toBe('132.80')
+        ->and($table->rows[3][4])->toBe('')
+        ->and($table->rows[4][3])->toBe('2948.00')
+        ->and($table->rows[5][2])->toBe('2447.52')
+        ->and($table->rows[6][1])->toContain('CONSOLIDATED FCY MARKUP FEE')
+        ->and($table->rows[6][1])->not->toContain('Cash Back Summary');
+});
+
+it('assembles canara txn-date datetime rows with branch codes on the amount line', function () {
+    $pages = [<<<'TXT'
+Txn Date           Value Date      Cheque No.              Description                    Branch            Debit            Credit            Balance
+                                                                                                  Code
+Opening Balance Rs. 27,767.55
+04-04-2023 13:09:04 04 Apr 2023 346025391557 UPI/DR/346025391557/BASHIR AH/
+JAKA/**n9596@okhdfcbank/NA//
+PTMa83fc6e5c48949268aec72d022a1d1e6/04/04/2023
+13:09:04
+33 2,000.00 25,767.55
+06-04-2023 10:21:13 06 Apr 2023 309615463075 UPI/DR/309615463075/ANIKET RA/
+UTIB/**71298@paytm/sonamarg//
+PTM532c9430e62f4026b1cec8c344991538/06/04/2023
+10:21:13
+33 2,031.00 23,736.55
+12-04-2023 12:34:14 12 Apr 2023 346810124039 UPI/CR/346810124039/HARSH
+DIL/PYTM/**94298@paytm/NA//
+PTMb5f71958aca5491999512fc75f84e49c/12/04/2023
+12:34:14
+33 5,000.00 28,736.55
+TXT];
+
+    $table = (new DateLedRowAssembler)->assemble($pages, 'canara23-24.pdf', 'Canara Bank');
+
+    expect($table->rows)->toHaveCount(3)
+        ->and($table->rows[0][0])->toBe('04-04-2023')
+        ->and($table->rows[0][1])->toContain('UPI/DR')
+        ->and($table->rows[0][1])->not->toStartWith('13:09:04')
+        ->and($table->rows[0][2])->toBe('2000.00')
+        ->and($table->rows[0][4])->toBe('25767.55')
+        ->and($table->rows[2][3])->toBe('5000.00')
+        ->and($table->rows[2][4])->toBe('28736.55');
+});
+
+it('assembles canara wrap layouts where narration and amounts sit above the date', function () {
+    $pages = [<<<'TXT'
+Statement for A/c XXXXXXXXXX1112 for the period 24-Sep-2022 to 03-Oct-2022
+Customer Id   XXXXXXX56
+IFSC Code          CNRB0018678
+Date               Particulars             Deposits              Withdrawals     Balance
+                                            Opening Balance                            1,000.00
+              UPI/DR/226646139740/SARPRE
+              /PYTM/**ALUJA@YBL/PAYMEN
+  23-09-2022 //AXLE0BB55BF2A6449218F28B
+            09F3CE3D7/23/09/2022 13:48:19                      100.00                       900.00
+              UPI/CR/226633811783/AMIT
+              UPP/SBIN/**50001@IBL/PAYME
+              //IBL2E23446943194840A997B9              50.00                               950.00
+ 23-09-2022   58B374816C/23/09/2022
+              16:06:02
+ 24-09-2022   SMS ALERT CHARGES NEW                                          18.00       932.00
+25-09-2022    CASH WITHDRAWAL                                      100.00               832.00
+                                             Closing Balance                      832.00
+TXT];
+
+    $table = (new DateLedRowAssembler)->assemble($pages, 'canara.pdf', 'Canara Bank');
+
+    expect($table->rows)->toHaveCount(4)
+        ->and($table->rows[0][0])->toBe('23-09-2022')
+        ->and($table->rows[0][1])->toContain('UPI/DR')
+        ->and($table->rows[0][1])->not->toContain('Statement for')
+        ->and($table->rows[0][2])->toBe('100.00')
+        ->and($table->rows[0][4])->toBe('900.00')
+        ->and($table->rows[1][3])->toBe('50.00')
+        ->and($table->rows[1][4])->toBe('950.00')
+        ->and($table->rows[2][1])->toBe('SMS ALERT CHARGES NEW')
+        ->and($table->rows[2][2])->toBe('18.00')
+        ->and($table->rows[3][1])->toBe('CASH WITHDRAWAL')
+        ->and($table->rows[3][2])->toBe('100.00');
+});
+
+it('keeps the last transaction amounts instead of absorbing a statement summary', function () {
+    $pages = [<<<'TXT'
+Date Narration Chq./Ref.No. Value Dt Withdrawal Amt. Deposit Amt. Closing Balance
+09/10/18 ACH D- HOME LOAN-38062210600110 0000005708866326 09/10/18 1,659.00 17,254.94
+10/10/18 NHDF6774869440/SBI CARDS 0000182839032247 10/10/18 10,060.00 7,194.94
+STATEMENT SUMMARY :-
+Opening Balance Dr Count Cr Count Debits Credits Closing Bal
+14,109.95 85 0 189,017.40 0.00 7,194.94
+Generated On: 22-Jan-2019 19:14 Generated By: 1001 Requesting Branch Code: NET
+This is a computer generated statement and does
+not require signature.
+Page No .: 5
+TEST ACCOUNT HOLDER
+HDFC BANK LIMITED
+*Closing balance includes funds earmarked for hold and uncleared funds
+TXT];
+
+    $table = (new DateLedRowAssembler)->assemble($pages, 'hdfc.pdf', 'HDFC Bank');
+    $last = $table->rows[array_key_last($table->rows)];
+
+    expect($table->rows)->toHaveCount(2)
+        ->and($last[0])->toBe('10/10/18')
+        ->and($last[1])->toContain('SBI CARDS')
+        ->and($last[1])->not->toContain('STATEMENT SUMMARY')
+        ->and($last[1])->not->toContain('require signature')
+        ->and($last[1])->not->toContain('BANK LIMITED')
+        ->and($last[2])->toBe('10060.00')
+        ->and($last[3])->toBe('')
+        ->and($last[4])->toBe('7194.94');
+});

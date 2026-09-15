@@ -114,6 +114,11 @@ class DateNormalizer
                 return null;
             }
 
+            // `d/m/Y` accepts `10/10/18` as year 0018. Reject that so `d/m/y` can win.
+            if ($date->year < 1990 || $date->year > 2100) {
+                return null;
+            }
+
             return $date;
         } catch (Throwable) {
             return null;

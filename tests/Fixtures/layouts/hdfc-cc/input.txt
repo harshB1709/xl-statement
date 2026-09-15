@@ -1,0 +1,42 @@
+Swiggy HDFC Bank Credit Card Statement
+HSN Code: 997113          HDFC Bank Credit Cards GSTIN: 33AAACH2702H2Z6
+
+ Harsh Bachawat                                             Credit Card No.                                       526873XXXXXX4314
+                                                            Statement Date                                                 14 Jul, 2026
+                                                            Billing Period                                15 Jun, 2026 - 14 Jul, 2026
+
+                                               PAYMENTS/CREDITS                          PURCHASES/DEBIT
+       PREVIOUS STATEMENT DUES                                                                                                 FINANCE CHARGES                  TOTAL AMOUNT DUE
+                                                   RECEIVED                             (Current Billing Cycle)
+
+               C2,947.52
+                                         _        C4,030.32                   +             C1,14,341.77               +             C0.00              =       C1,13,259.00
+
+
+                                                  Domestic Transactions
+                                                  DATE & TIME                             TRANSACTION DESCRIPTION                                                                            AMOUNT          PI
+
+                                                                                          Harsh Bachawat             [CKYC ID : 20030853292546 ]
+
+                                                  15/06/2026| 00:00                       5% Swiggy Cashback                                                                                + C 112.42       l
+                                                  20/06/2026| 16:26               EMI     PYU*Flipkart PaymenBangalore                                                                      C 30,842.00      l
+                                                  22/06/2026| 00:00                       1% Swiggy CashBack                                                                                + C 308.42       l
+                                                  29/06/2026| 00:00                       1.75% on all DCC Transaction (Ref# ST261810084000011711508)                                         C 132.80       l
+                                                  29/06/2026| 03:50                       BPPY CC PAYMENT AS0161800350449z1eb (Ref# ST261810083000010238366)                               + C 2,948.00      l
+
+
+ International Transactions
+ DATE & TIME                              TRANSACTION DESCRIPTION                                                                                AMOUNT       PI
+
+ 16/06/2026 | 17:07                       VNPAY*EVISAVIETNAHA NOI                                                VND 677,928                     C 2,447.52   l
+ 14/07/2026 | 00:00                       CONSOLIDATED FCY MARKUP FEE (Ref# MT261890076000010005929)                                               C 402.10   l
+
+
+*Transaction time captured in IST Zone.
+
+  Page 1 of 2
+
+     Cash Back Summary
+     SR NO.               TRANSACTION                                                                                                                                                                          AMOUNT
+
+     1                    1% Swiggy CashBack                                                                                                                                                                     C 500.00

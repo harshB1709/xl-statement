@@ -34,11 +34,35 @@ class DateLedRowAssembler
         $rowPages = [];
         $current = null;
         $currentPage = 1;
+        $pendingDescription = '';
+        $pendingAmountLine = null;
+        $pendingMarker = null;
+        $openingBalance = null;
 
         foreach ($lines as $index => $line) {
             $trimmed = trim($line);
 
-            if ($trimmed === '' || $this->isNoise($trimmed)) {
+            if ($trimmed === '') {
+                continue;
+            }
+
+            if ($this->looksLikeTableHeader($trimmed) || $this->looksLikeHeaderContinuation($trimmed)) {
+                $pendingDescription = '';
+                $pendingAmountLine = null;
+                $pendingMarker = null;
+
+                continue;
+            }
+
+            $opening = $this->extractOpeningBalance($trimmed);
+
+            if ($opening !== null) {
+                $openingBalance ??= $opening;
+
+                continue;
+            }
+
+            if ($this->isNoise($trimmed) || $this->isHardStop($trimmed)) {
                 if ($current !== null && $this->isHardStop($trimmed)) {
                     $built = $this->finalize($current);
 
@@ -69,35 +93,109 @@ class DateLedRowAssembler
 
                 $currentPage = $pageOf[$index] ?? 1;
                 $date = $this->extractDate($trimmed);
-                $rest = $this->stripLeadingDates($trimmed);
+                $rest = $this->stripLeadingTimeAndValueDate($this->stripLeadingDates($trimmed));
+                $hasMoney = $this->lineHasMoney($trimmed);
 
                 $current = [
                     'date' => $date,
-                    'description' => $rest,
-                    'amount_line' => null,
-                    'marker' => null,
+                    'description' => $this->appendDescription($pendingDescription, $rest),
+                    'amount_line' => $hasMoney ? $trimmed : $pendingAmountLine,
+                    'marker' => $hasMoney
+                        ? $this->extractTransactionMarker($trimmed)
+                        : $pendingMarker,
                 ];
 
-                if ($this->lineHasMoney($trimmed)) {
-                    $current['amount_line'] = $trimmed;
-                    $current['marker'] = $this->extractTransactionMarker($trimmed);
+                $pendingDescription = '';
+                $pendingAmountLine = null;
+                $pendingMarker = null;
+
+                continue;
+            }
+
+            $isAmountLine = $this->containsAmountPair($trimmed) || $this->isMostlyAmountLine($trimmed);
+
+            if ($isAmountLine) {
+                // Summary totals (Opening/Total Debit/Credit/Closing) must not
+                // become a parked amount for the first transaction.
+                if ($current === null && $this->countMoneyValues($trimmed) >= 3) {
+                    $pendingAmountLine = null;
+                    $pendingMarker = null;
+
+                    continue;
                 }
 
+                if ($current !== null && $this->rowHasMoney($current)) {
+                    if ($this->isTrailingTotalsLine($current, $trimmed)) {
+                        $built = $this->finalize($current);
+
+                        if ($built !== null) {
+                            $rows[] = $built;
+                            $rowPages[] = $currentPage;
+                        }
+
+                        $current = null;
+                        $pendingDescription = '';
+                        $pendingAmountLine = null;
+                        $pendingMarker = null;
+
+                        continue;
+                    }
+
+                    // Row already has amounts — Canara wraps the *next* txn's
+                    // deposit/withdrawal line above its date. Park for the next date.
+                    $built = $this->finalize($current);
+
+                    if ($built !== null) {
+                        $rows[] = $built;
+                        $rowPages[] = $currentPage;
+                    }
+
+                    $current = null;
+                    $pendingAmountLine = $trimmed;
+                    $pendingMarker = $this->extractTransactionMarker($trimmed);
+                    $pendingDescription = $this->appendDescription(
+                        $pendingDescription,
+                        $this->stripMoneyAndMarkers($trimmed),
+                    );
+
+                    continue;
+                }
+
+                if ($current !== null) {
+                    $current['amount_line'] = trim(($current['amount_line'] ?? '').' '.$trimmed);
+                    $current['marker'] ??= $this->extractTransactionMarker($trimmed);
+
+                    continue;
+                }
+
+                $pendingAmountLine = $trimmed;
+                $pendingMarker = $this->extractTransactionMarker($trimmed);
+                $pendingDescription = $this->appendDescription(
+                    $pendingDescription,
+                    $this->stripMoneyAndMarkers($trimmed),
+                );
+
                 continue;
             }
 
-            if ($current === null) {
-                continue;
-            }
-
-            if ($this->containsAmountPair($trimmed) || $this->isMostlyAmountLine($trimmed)) {
-                $current['amount_line'] = trim(($current['amount_line'] ?? '').' '.$trimmed);
-                $current['marker'] ??= $this->extractTransactionMarker($trimmed);
+            if ($current !== null && ! $this->rowHasMoney($current)) {
+                $current['description'] = $this->appendDescription($current['description'], $trimmed);
 
                 continue;
             }
 
-            $current['description'] = $this->appendDescription($current['description'], $trimmed);
+            // Ref/time wraps after amounts belong to the completed row; once a
+            // new narration is already parked, keep parking its wrap lines too.
+            if ($current !== null
+                && $this->rowHasMoney($current)
+                && $pendingDescription === ''
+                && ! $this->looksLikeNewNarration($trimmed)) {
+                $current['description'] = $this->appendDescription($current['description'], $trimmed);
+
+                continue;
+            }
+
+            $pendingDescription = $this->appendDescription($pendingDescription, $trimmed);
         }
 
         if ($current !== null) {
@@ -109,7 +207,7 @@ class DateLedRowAssembler
             }
         }
 
-        $rows = $this->classifyDebitCredit($rows);
+        $rows = $this->classifyDebitCredit($rows, $openingBalance);
 
         $headers = ['Date', 'Description', 'Debit', 'Credit', 'Balance'];
         $columns = [];
@@ -167,11 +265,57 @@ class DateLedRowAssembler
             return true;
         }
 
+        // Canara-style Deposit/Withdrawal tables wrap narration above the date.
+        // Prefer date-led when fixed-width under/over-segments vs date-led lines.
+        if ($this->headersLookLikeSeparateDepositWithdrawal($headerCells)
+            && ($this->slicedRowsLookChopped($slicedRows)
+                || $this->slicedRowsLookMisaligned($slicedRows)
+                || $slicedRowCount !== $dateLikeLineCount)) {
+            return true;
+        }
+
+        // HDFC/Swiggy CC: DATE & TIME + single Amount column (no running balance).
+        if ($this->headersLookLikeCreditCardAmount($headerCells)) {
+            return true;
+        }
+
         if ($this->slicedRowsLookChopped($slicedRows) || $this->slicedRowsLookMisaligned($slicedRows)) {
             return true;
         }
 
         return $slicedRowCount < max(3, (int) floor($dateLikeLineCount * 0.5));
+    }
+
+    /**
+     * @param  list<string>  $headerCells
+     */
+    public function headersLookLikeSeparateDepositWithdrawal(array $headerCells): bool
+    {
+        $joined = strtolower(implode(' ', $headerCells));
+
+        return str_contains($joined, 'deposit') && str_contains($joined, 'withdrawal');
+    }
+
+    /**
+     * Credit-card ledgers use one signed Amount column instead of Debit/Credit/Balance.
+     *
+     * @param  list<string>  $headerCells
+     */
+    public function headersLookLikeCreditCardAmount(array $headerCells): bool
+    {
+        $joined = strtolower(implode(' ', $headerCells));
+        $hasAmount = str_contains($joined, 'amount');
+        $hasDescription = str_contains($joined, 'description')
+            || str_contains($joined, 'particulars')
+            || str_contains($joined, 'narration');
+        $hasRunningBalance = str_contains($joined, 'balance');
+        $hasDebitCredit = str_contains($joined, 'debit') || str_contains($joined, 'credit');
+        $hasDateTime = (str_contains($joined, 'date') && str_contains($joined, 'time'))
+            || str_contains($joined, 'date & time')
+            || str_contains($joined, 'date and time');
+
+        return $hasAmount && $hasDescription && ! $hasRunningBalance && ! $hasDebitCredit
+            && ($hasDateTime || str_contains($joined, 'pi'));
     }
 
     /**
@@ -250,6 +394,11 @@ class DateLedRowAssembler
             return true;
         }
 
+        // HDFC CC Poppler splits "DATE & TIME" into DATE | & | TIME.
+        if (in_array('&', $normalized, true)) {
+            return true;
+        }
+
         // Two-line CBI headers leave orphan first words when the second line
         // ("Date" / "Code" / "Number") is not merged into the boundary line.
         if (in_array('value', $normalized, true) && ! in_array('value date', $normalized, true)) {
@@ -308,11 +457,32 @@ class DateLedRowAssembler
                 } elseif (preg_match('/\d\s+\d{1,2},\d{2},\d{3}\.\d{2}/', $cell) === 1) {
                     // e.g. "9 0,46,057.06" from a cut through 90,46,057.06
                     $chopped++;
+                } elseif (preg_match('/^\d{1,3},\d{2}$/', $cell) === 1) {
+                    // Canara/Poppler mid-amount cut: "25,00" from 25,000.00
+                    $chopped++;
+                } elseif (preg_match('/\d{1,3}(?:,\d{2,3})+\.$/', $cell) === 1) {
+                    // Trailing decimal cut: "2,372." or "43,072."
+                    $chopped++;
+                } elseif (preg_match('/^0,\d{3}\.\d{2}$/', $cell) === 1) {
+                    // Leading digit dropped: "0,000.00" from 40,000.00
+                    $chopped++;
+                } elseif (preg_match('/^\.\d{2}$/', $cell) === 1) {
+                    // Balance fragment: ".55"
+                    $chopped++;
+                } elseif (preg_match('/^\d{1,3}(?:,\d{2,3})+$/', $cell) === 1) {
+                    // Amount without decimals: "7,536" split from 7,536.55
+                    $chopped++;
+                } elseif (preg_match('/'.$this->moneyPattern().'\s+\d{2,4}$/', $cell) === 1) {
+                    // Money glued to a year/fragment: "13,000.00 023"
+                    $chopped++;
+                } elseif (preg_match_all('/\d{1,2}[-\/]\d{1,2}/', $cell) >= 3) {
+                    // Several day/month fragments stacked in one cell (CC column drift)
+                    $chopped++;
                 }
             }
         }
 
-        return $checked >= 8 && $chopped >= 3;
+        return $checked >= 4 && $chopped >= 2 && ($chopped >= 3 || ($chopped / $checked) >= 0.25);
     }
 
     /**
@@ -384,6 +554,7 @@ class DateLedRowAssembler
             $marker = $debit !== null ? 'DR' : ($credit !== null ? 'CR' : $marker);
         } else {
             [$amount, $balance] = $this->parseAmounts($amountBlob);
+            $marker ??= $this->extractSignedAmountMarker($amountSource);
         }
 
         if ($amount === null && $balance === null) {
@@ -396,7 +567,7 @@ class DateLedRowAssembler
             $cleanDescription = preg_replace('/\s*(?:'.$this->moneyPattern().'|\s-\s|^-\s+|-\s*$)+\s*/', ' ', $cleanDescription) ?? $cleanDescription;
         } else {
             $cleanDescription = preg_replace(
-                '/(?:(?:₹|rs\.?|inr)\s*)?(?:'.$this->moneyPattern().')+(?:\d{0,4})?\s*$/iu',
+                '/(?:(?:₹|rs\.?|inr|C)\s*)?(?:'.$this->moneyPattern().')+(?:\d{0,4})?\s*$/iu',
                 '',
                 $cleanDescription,
             ) ?? $cleanDescription;
@@ -406,6 +577,10 @@ class DateLedRowAssembler
         $cleanDescription = trim(preg_replace('/(?:^|\s)\d{4,8}$/', '', $cleanDescription) ?? $cleanDescription);
         // Strip leading txn ids that DateLed left in the description blob.
         $cleanDescription = trim(preg_replace('/^(?:[A-Z]{2,}\d[\w]*\s+)/', '', $cleanDescription) ?? $cleanDescription);
+        // HDFC CC leftovers: purchase-indicator bullet, currency stub, signed "+".
+        $cleanDescription = trim(preg_replace('/\s+[+l]$/i', '', $cleanDescription) ?? $cleanDescription);
+        $cleanDescription = trim(preg_replace('/(?:^|\s)C$/i', '', $cleanDescription) ?? $cleanDescription);
+        $cleanDescription = trim(preg_replace('/\s+\+$/', '', $cleanDescription) ?? $cleanDescription);
 
         if ($cleanDescription === '' || preg_match('/^(opening|closing|transaction total)/i', $cleanDescription) === 1) {
             return null;
@@ -424,7 +599,34 @@ class DateLedRowAssembler
             return [$current['date'], $cleanDescription, '', $formattedAmount, $formattedBalance];
         }
 
+        // HDFC CC Amount column: unsigned "C 1,234.00" is a purchase (debit).
+        if ($balance === null && $amount !== null && $this->looksLikeCreditCardAmountLine($amountSource)) {
+            return [$current['date'], $cleanDescription, $formattedAmount, '', ''];
+        }
+
         return [$current['date'], $cleanDescription, '', $formattedAmount, $formattedBalance];
+    }
+
+    /**
+     * HDFC CC marks payments/cashback with a leading "+" before the amount.
+     */
+    private function extractSignedAmountMarker(string $text): ?string
+    {
+        $money = $this->moneyPattern();
+
+        if (preg_match('/\+\s*(?:C\s*)?'.$money.'/i', $text) === 1) {
+            return 'CR';
+        }
+
+        return null;
+    }
+
+    private function looksLikeCreditCardAmountLine(string $text): bool
+    {
+        $money = $this->moneyPattern();
+
+        return preg_match('/(?:^|[+\s])C\s*'.$money.'/i', $text) === 1
+            || preg_match('/\+\s*'.$money.'/', $text) === 1;
     }
 
     /**
@@ -453,13 +655,13 @@ class DateLedRowAssembler
      * @param  list<list<string>>  $rows
      * @return list<list<string>>
      */
-    private function classifyDebitCredit(array $rows): array
+    private function classifyDebitCredit(array $rows, ?float $openingBalance = null): array
     {
         if ($this->looksReverseChronological($rows)) {
             return $this->classifyDebitCreditReverse($rows);
         }
 
-        $previousBalance = null;
+        $previousBalance = $openingBalance;
 
         foreach ($rows as $index => $row) {
             $debit = $row[2] !== '' ? (float) $row[2] : null;
@@ -654,12 +856,16 @@ class DateLedRowAssembler
 
     private function moneyPattern(): string
     {
-        return '(?:\d{1,3}(?:,\d{2,3})+\.\d{2}|\d+\.\d{2})';
+        // Negative lookahead skips rate/fee percents like "1.75% on all DCC".
+        return '(?:\d{1,3}(?:,\d{2,3})+\.\d{2}|\d+\.\d{2})(?!%)';
     }
 
     private function stripCurrencyMarkers(string $text): string
     {
-        return preg_replace('/(?:₹|(?<![a-z])rs\.?(?![a-z])|(?<![a-z])inr(?![a-z]))\s*/iu', '', $text) ?? $text;
+        // Poppler often renders ₹ as a lone "C" before amounts on HDFC CC PDFs.
+        $text = preg_replace('/(?:₹|(?<![a-z])rs\.?(?![a-z])|(?<![a-z])inr(?![a-z])|(?<![A-Za-z0-9])C(?=\s*\d))/iu', '', $text) ?? $text;
+
+        return preg_replace('/\s{2,}/', ' ', $text) ?? $text;
     }
 
     private function datePattern(): string
@@ -723,6 +929,21 @@ class DateLedRowAssembler
         return trim($rest);
     }
 
+    private function stripLeadingTimeAndValueDate(string $rest): string
+    {
+        // HDFC CC: "15/06/2026| 00:00" or "14/06/2026 | 00:00"
+        $rest = preg_replace('/^\|\s*\d{1,2}:\d{2}(:\d{2})?\s*/', '', $rest) ?? $rest;
+        $rest = preg_replace('/^\d{1,2}:\d{2}(:\d{2})?\s+/', '', $rest) ?? $rest;
+        $rest = preg_replace('/^EMI\b\s*/i', '', $rest) ?? $rest;
+        $rest = preg_replace(
+            '/^\d{1,2}[-\s](?:'.self::MONTHS.')[a-z]*[-\s]\d{2,4}\s+/i',
+            '',
+            $rest,
+        ) ?? $rest;
+
+        return trim($rest);
+    }
+
     private function lineHasMoney(string $line): bool
     {
         return preg_match('/'.$this->moneyPattern().'/', $line) === 1;
@@ -762,8 +983,45 @@ class DateLedRowAssembler
         return null;
     }
 
+    /**
+     * @param  array{date: ?string, description: string, amount_line: ?string, marker: ?string}  $current
+     */
+    private function rowHasMoney(array $current): bool
+    {
+        $amountLine = $current['amount_line'] ?? '';
+
+        return $amountLine !== '' && $this->lineHasMoney($amountLine);
+    }
+
+    private function extractOpeningBalance(string $line): ?float
+    {
+        if (preg_match('/\bopening balance\b/i', $line) !== 1) {
+            return null;
+        }
+
+        if (preg_match_all('/'.$this->moneyPattern().'/', $line, $matches) === 0) {
+            return null;
+        }
+
+        return (float) str_replace(',', '', $matches[0][array_key_last($matches[0])]);
+    }
+
+    private function stripMoneyAndMarkers(string $line): string
+    {
+        $clean = preg_replace('/\s*(?:'.$this->moneyPattern().'|\s-\s|^-\s+|-\s*$)+\s*/', ' ', $line) ?? $line;
+        $clean = preg_replace('/\s*\b(?:DR|CR)\.?\b\s*/i', ' ', $clean) ?? $clean;
+
+        return trim(preg_replace('/\s+/', ' ', $clean) ?? $clean);
+    }
+
     private function appendDescription(string $existing, string $addition): string
     {
+        $addition = trim($addition);
+
+        if ($addition === '' || $addition === '.') {
+            return $existing;
+        }
+
         if ($existing === '') {
             return $addition;
         }
@@ -788,12 +1046,45 @@ class DateLedRowAssembler
         return $description;
     }
 
+    /**
+     * Totals rows after a complete txn (HDFC "STATEMENT SUMMARY" amount line)
+     * must not overwrite the last withdrawal/deposit + balance pair.
+     *
+     * @param  array{date: ?string, description: string, amount_line: ?string, marker: ?string}  $current
+     */
+    private function isTrailingTotalsLine(array $current, string $line): bool
+    {
+        $existing = $current['amount_line'] ?? '';
+
+        if ($existing === '' || ! $this->lineHasMoney($existing)) {
+            return false;
+        }
+
+        return $this->countMoneyValues($line) >= 3;
+    }
+
+    private function countMoneyValues(string $line): int
+    {
+        if (preg_match_all('/'.$this->moneyPattern().'/', $line, $matches) === 0) {
+            return 0;
+        }
+
+        return count($matches[0]);
+    }
+
     private function isHardStop(string $line): bool
     {
         $normalized = strtolower($line);
 
         return str_contains($normalized, 'transaction total')
-            || str_contains($normalized, 'closing balance')
+            || str_contains($normalized, 'closing bal')
+            || str_contains($normalized, 'statement summary')
+            || str_contains($normalized, 'cash back summary')
+            || str_contains($normalized, 'cashback summary')
+            || str_contains($normalized, 'gst summary')
+            || str_contains($normalized, 'eligible for emi')
+            || str_contains($normalized, 'dr count')
+            || str_contains($normalized, 'cr count')
             || str_contains($normalized, 'unless the constituent')
             || str_contains($normalized, 'end of statement')
             || str_contains($normalized, 'legends')
@@ -817,7 +1108,15 @@ class DateLedRowAssembler
             || str_contains($normalized, 'kotak mahindra')
             || str_contains($normalized, 'iconn-')
             || str_contains($normalized, 'transaction total')
-            || str_contains($normalized, 'closing balance')
+            || str_contains($normalized, 'statement summary')
+            || str_contains($normalized, 'dr count')
+            || str_contains($normalized, 'cr count')
+            || str_contains($normalized, 'generated on')
+            || str_contains($normalized, 'generated by')
+            || str_contains($normalized, 'require signature')
+            || str_contains($normalized, 'requesting branch')
+            || str_contains($normalized, 'bank limited')
+            || str_contains($normalized, 'closing bal')
             || str_contains($normalized, 'opening balance')
             || str_contains($normalized, 'cleared balance')
             || str_contains($normalized, 'drawing power')
@@ -855,8 +1154,68 @@ class DateLedRowAssembler
             || str_contains($normalized, 'bank never asks')
             || str_contains($normalized, 'do not share your atm')
             || str_contains($normalized, 'central bank of india')
+            || str_contains($normalized, 'domestic transactions')
+            || str_contains($normalized, 'international transactions')
+            || str_contains($normalized, 'purchase indicator')
+            || str_contains($normalized, 'transaction time captured')
+            || str_contains($normalized, 'offers on your card')
+            || str_contains($normalized, 'benefits on your card')
+            || str_contains($normalized, 'hsn code')
             || preg_match('/^(tran date|transaction date|value date|particulars|debit|credit|balance|che|txn)/', $normalized) === 1
+            || preg_match('/^date\b.*\b(particulars|narration|description|deposits|withdrawals|balance|amount|time)\b/', $normalized) === 1
+            || preg_match('/^statement for\b/', $normalized) === 1
+            || preg_match('/^(customer id|name|phone|address|ifsc|branch name|branch code)\b/', $normalized) === 1
+            || preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $normalized) === 1
             || $this->isLegendDetail($line);
+    }
+
+    private function looksLikeTableHeader(string $line): bool
+    {
+        $normalized = strtolower(trim(preg_replace('/\s+/', ' ', $line) ?? $line));
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        $hits = 0;
+
+        foreach ([
+            'post date', 'value date', 'txn date', 'transaction date', 'date & time', 'date and time',
+            'particulars', 'narration', 'description', 'deposits', 'withdrawals',
+            'debit', 'credit', 'balance', 'amount', 'cheque', 'branch',
+        ] as $token) {
+            if (str_contains($normalized, $token)) {
+                $hits++;
+            }
+        }
+
+        if ($hits >= 3) {
+            return true;
+        }
+
+        return preg_match('/\bdate\b/', $normalized) === 1 && $hits >= 2;
+    }
+
+    private function looksLikeHeaderContinuation(string $line): bool
+    {
+        $normalized = strtolower(trim(preg_replace('/\s+/', ' ', $line) ?? $line));
+
+        if ($normalized === '') {
+            return false;
+        }
+
+        // CBI Poppler second header line: "Date Code Number"
+        return preg_match('/^(?:date|value|branch|cheque|code|number)(?:\s+(?:date|value|branch|cheque|code|number))*$/', $normalized) === 1
+            && ! $this->lineHasMoney($normalized)
+            && ! $this->isDateLed($normalized);
+    }
+
+    private function looksLikeNewNarration(string $line): bool
+    {
+        return preg_match(
+            '/\b(?:UPI\/|NEFT|IMPS|RTGS|ACH|ATM|POS|NWD|EAW|ATW|CASH\s|SMS\s|EMI\s|FT\s*-|IB\s+BILLPAY|IB\s+NEFT|IB-IMPS|INET-IMPS|MOB-IMPS|MICRO\s+ATM|CREDIT\s+INTEREST|SBINT|ECS\s|PMSBY|DEBIT\s+CARD|By\s+Clg|CASA\.|SELF\s+-)/i',
+            $line,
+        ) === 1;
     }
 
     private function isLegendDetail(string $line): bool

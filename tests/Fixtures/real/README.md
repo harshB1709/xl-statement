@@ -6,6 +6,10 @@ Suggested names (tests look for these when present):
 
 - `axis.pdf`
 - `idfc.pdf`
+- `hdfc.pdf`
+- `hdfc-cc.pdf` (+ `hdfc-cc.password` for the unlock password)
+- `canara.pdf`
+- `canara23-24.pdf`
 - `locked-cbi.pdf` (password-protected Central Bank of India; local Papier unlock checks)
 - `kotak.pdf`
 

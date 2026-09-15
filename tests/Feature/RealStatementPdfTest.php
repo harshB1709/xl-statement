@@ -13,6 +13,13 @@ dataset('real_statement_pdfs', [
     'idfc' => ['idfc.pdf', 20, 90.0],
     'airtel' => ['airtel.pdf', 50, 90.0],
     'boi' => ['boi.pdf', 20, 90.0],
+    'hdfc' => ['hdfc.pdf', 80, 90.0],
+    // Password in sibling hdfc-cc.password (gitignored with the PDF).
+    'hdfc-cc' => ['hdfc-cc.pdf', 30, 100.0],
+    // Source PDF has one internal balance jump (25k withdrawal vs prior balance);
+    // extractor still returns the 10 posted rows with correct amounts.
+    'canara' => ['canara.pdf', 8, 85.0],
+    'canara23-24' => ['canara23-24.pdf', 150, 95.0],
 ]);
 
 it('extracts and reconciles real statement pdfs', function (string $filename, int $minRows, float $minReconcile) {
@@ -22,7 +29,15 @@ it('extracts and reconciles real statement pdfs', function (string $filename, in
         test()->markTestSkipped('Place '.$filename.' in tests/Fixtures/real/ to run this check.');
     }
 
-    $table = app(ExtractStatementTable::class)->handle($path);
+    $passwordPath = preg_replace('/\.pdf$/i', '.password', $path);
+    $password = is_string($passwordPath) && is_file($passwordPath)
+        ? trim((string) file_get_contents($passwordPath))
+        : null;
+
+    $table = app(ExtractStatementTable::class)->handle(
+        $path,
+        ($password !== null && $password !== '') ? $password : null,
+    );
     $mapping = app(MappingSuggester::class)->suggest($table);
     $parsed = app(ApplyColumnMapping::class)->handle($table, $mapping);
 

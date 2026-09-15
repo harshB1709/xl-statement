@@ -193,6 +193,10 @@ class ExtractStatementTable
             return 'Bank of India';
         }
 
+        if (preg_match('/\bCanara Bank\b/i', $preamble) === 1 || preg_match('/\bCNRB\d{7}\b/', $preamble) === 1) {
+            return 'Canara Bank';
+        }
+
         if (preg_match('/\b(HDFC Bank|ICICI Bank|State Bank of India|Axis Bank|Yes Bank|IDFC FIRST Bank|Punjab National Bank|Bank of Baroda|Central Bank of India)\b/i', $preamble, $matches) === 1) {
             return $matches[1];
         }

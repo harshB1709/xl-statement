@@ -84,3 +84,70 @@ TXT;
         ->and(implode(' | ', $table->rows[0]))->not->toMatch('/(?:^|\s|\|)\/\d{2}\//')
         ->and(implode(' | ', $table->rows[0]))->not->toMatch('/(?:^|\s|\|),\d/');
 });
+
+it('maps the last hdfc-style row without swallowing the statement summary', function () {
+    $text = <<<'TXT'
+HDFC Bank
+Date Narration Chq./Ref.No. Value Dt Withdrawal Amt. Deposit Amt. Closing Balance
+09/10/18 ACH D- HOME LOAN-38062210600110 0000005708866326 09/10/18 1,659.00 17,254.94
+10/10/18 NHDF6774869440/SBI CARDS 0000182839032247 10/10/18 10,060.00 7,194.94
+STATEMENT SUMMARY :-
+Opening Balance Dr Count Cr Count Debits Credits Closing Bal
+14,109.95 85 0 189,017.40 0.00 7,194.94
+This is a computer generated statement and does
+not require signature.
+HDFC BANK LIMITED
+TXT;
+
+    $table = app(ExtractStatementTable::class)->fromExtractedText(new ExtractedText([$text], 'hdfc.pdf'));
+    $mapping = app(MappingSuggester::class)->suggest($table);
+    $parsed = app(ApplyColumnMapping::class)->handle($table, $mapping);
+    $last = $parsed->transactions[array_key_last($parsed->transactions)];
+
+    expect($parsed->transactions)->toHaveCount(2)
+        ->and($last->date?->toDateString())->toBe('2018-10-10')
+        ->and($last->debit)->toBe(10060.0)
+        ->and($last->credit)->toBeNull()
+        ->and($last->balance)->toBe(7194.94)
+        ->and($last->description)->toContain('SBI CARDS')
+        ->and($last->description)->not->toContain('STATEMENT SUMMARY');
+});
+
+it('extracts canara deposit withdrawal wraps without preamble pollution', function () {
+    $text = file_get_contents(base_path('tests/Fixtures/layouts/canara-wrap/input.txt'));
+
+    $table = app(ExtractStatementTable::class)->fromExtractedText(new ExtractedText([$text], 'canara.pdf'));
+    $mapping = app(MappingSuggester::class)->suggest($table);
+    $parsed = app(ApplyColumnMapping::class)->handle($table, $mapping);
+
+    expect($table->bankName)->toBe('Canara Bank')
+        ->and($table->headerCells)->toBe(['Date', 'Description', 'Debit', 'Credit', 'Balance'])
+        ->and($parsed->transactions)->toHaveCount(4)
+        ->and($parsed->transactions[0]->date?->toDateString())->toBe('2022-09-23')
+        ->and($parsed->transactions[0]->debit)->toBe(100.0)
+        ->and($parsed->transactions[0]->balance)->toBe(900.0)
+        ->and($parsed->transactions[0]->description)->toContain('UPI/DR')
+        ->and($parsed->transactions[0]->description)->not->toContain('Opening Balance')
+        ->and($parsed->transactions[1]->credit)->toBe(50.0)
+        ->and($parsed->transactions[2]->debit)->toBe(18.0)
+        ->and($parsed->transactions[3]->debit)->toBe(100.0)
+        ->and($parsed->reconciliationMatchPercent)->toBe(100.0);
+});
+
+it('extracts hdfc credit-card statements with signed amounts and fee percents', function () {
+    $text = file_get_contents(base_path('tests/Fixtures/layouts/hdfc-cc/input.txt'));
+
+    $table = app(ExtractStatementTable::class)->fromExtractedText(new ExtractedText([$text], 'hdfc-cc.pdf'));
+    $mapping = app(MappingSuggester::class)->suggest($table);
+    $parsed = app(ApplyColumnMapping::class)->handle($table, $mapping);
+
+    expect($table->bankName)->toBe('HDFC Bank')
+        ->and($table->headerCells)->toBe(['Date', 'Description', 'Debit', 'Credit', 'Balance'])
+        ->and($parsed->transactions)->toHaveCount(7)
+        ->and($parsed->transactions[0]->credit)->toBe(112.42)
+        ->and($parsed->transactions[1]->debit)->toBe(30842.0)
+        ->and($parsed->transactions[3]->debit)->toBe(132.8)
+        ->and($parsed->transactions[3]->description)->toStartWith('1.75% on all DCC Transaction')
+        ->and($parsed->transactions[4]->credit)->toBe(2948.0)
+        ->and($parsed->reconciliationMatchPercent)->toBe(100.0);
+});

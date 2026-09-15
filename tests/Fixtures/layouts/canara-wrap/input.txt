@@ -1,0 +1,19 @@
+Canara Bank
+IFSC Code          CNRB0018678
+    Date               Particulars             Deposits              Withdrawals     Balance
+                                            Opening Balance                            1,000.00
+              UPI/DR/226646139740/SARPRE
+              /PYTM/**ALUJA@YBL/PAYMEN
+  23-09-2022 //AXLE0BB55BF2A6449218F28B
+            09F3CE3D7/23/09/2022                      100.00                       900.00
+
+
+
+              UPI/CR/226633811783/AMIT
+              UPP/SBIN/**50001@IBL/PAYME
+              //IBL2E23446943194840A997B9              50.00                               950.00
+ 23-09-2022   58B374816C/23/09/2022
+              16:06:02
+ 24-09-2022   SMS ALERT CHARGES NEW                                          18.00       932.00
+25-09-2022    CASH WITHDRAWAL                                      100.00               832.00
+                                             Closing Balance                      832.00
